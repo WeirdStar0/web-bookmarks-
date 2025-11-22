@@ -1,0 +1,269 @@
+# Web Bookmarks Manager
+
+一个基于 Cloudflare Workers 和 D1 数据库构建的现代化书签管理系统。
+
+## ✨ 功能特性
+
+- 📁 **文件夹管理** - 创建、编辑、删除文件夹,支持嵌套结构
+- 🔖 **书签管理** - 添加、编辑、删除书签
+- 🗑️ **回收站** - 软删除机制,可恢复已删除的书签和文件夹
+- 📤 **导入/导出** - 支持 Netscape HTML 格式的书签导入导出
+- 🔐 **身份验证** - 基于 Cookie 的安全认证系统
+- ⚡ **无服务器架构** - 部署在 Cloudflare Workers,全球边缘网络加速
+- 💾 **D1 数据库** - 使用 Cloudflare D1 SQLite 数据库存储数据
+
+## 🚀 技术栈
+
+- **后端框架**: [Hono](https://hono.dev/) - 轻量级 Web 框架
+- **运行时**: Cloudflare Workers
+- **数据库**: Cloudflare D1 (SQLite)
+- **前端**: 原生 HTML/CSS/JavaScript + Alpine.js
+- **语言**: TypeScript
+
+## 📋 前置要求
+
+- Node.js 16.x 或更高版本
+- npm 或 yarn
+- Cloudflare 账号
+- Wrangler CLI (Cloudflare 开发工具)
+
+## 🛠️ 本地开发
+
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/YOUR_USERNAME/web-bookmarks.git
+cd web-bookmarks
+```
+
+### 2. 安装依赖
+
+```bash
+npm install
+```
+
+### 3. 创建本地数据库
+
+```bash
+# 创建本地 D1 数据库
+npx wrangler d1 create bookmarks-db
+
+# 复制输出的 database_id 并更新 wrangler.toml 中的 database_id
+```
+
+### 4. 初始化数据库表结构
+
+```bash
+# 本地开发环境
+npx wrangler d1 execute bookmarks-db --local --file=./schema.sql
+
+# 生产环境(部署后执行)
+npx wrangler d1 execute bookmarks-db --remote --file=./schema.sql
+```
+
+### 5. 启动开发服务器
+
+```bash
+npm run dev
+```
+
+访问 `http://localhost:8787` 即可看到应用。
+
+默认登录凭据:
+- 用户名: `admin`
+- 密码: `12345`
+
+## 📦 部署到 Cloudflare Workers
+
+### 方法一: 使用 Wrangler CLI (推荐)
+
+1. **登录 Cloudflare**
+
+```bash
+npx wrangler login
+```
+
+2. **创建生产环境数据库**
+
+```bash
+# 创建 D1 数据库
+npx wrangler d1 create bookmarks-db
+
+# 记录输出的 database_id,更新 wrangler.toml
+```
+
+3. **更新 wrangler.toml**
+
+编辑 `wrangler.toml`,将 `database_id` 替换为实际的数据库 ID:
+
+```toml
+[[d1_databases]]
+binding = "DB"
+database_name = "bookmarks-db"
+database_id = "your-actual-database-id"  # 替换这里
+```
+
+4. **初始化生产数据库**
+
+```bash
+npx wrangler d1 execute bookmarks-db --remote --file=./schema.sql
+```
+
+5. **部署应用**
+
+```bash
+npm run deploy
+```
+
+部署成功后,Wrangler 会输出你的应用 URL,类似:
+```
+https://web-bookmarks.YOUR_SUBDOMAIN.workers.dev
+```
+
+### 方法二: 使用 GitHub Actions 自动部署
+
+1. **设置 GitHub Secrets**
+
+在 GitHub 仓库的 Settings > Secrets and variables > Actions 中添加:
+
+- `CLOUDFLARE_API_TOKEN`: Cloudflare API Token
+- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare Account ID
+
+2. **创建 GitHub Actions 工作流**
+
+项目已包含 `.github/workflows/deploy.yml`,每次推送到 `main` 分支时自动部署。
+
+## 🔧 配置说明
+
+### wrangler.toml
+
+主要配置文件,包含:
+- Worker 名称
+- D1 数据库绑定
+- 兼容性日期
+
+### 环境变量
+
+如需使用环境变量,创建 `.dev.vars` 文件(本地开发):
+
+```
+# .dev.vars
+SECRET_KEY=your-secret-key
+```
+
+## 📖 API 文档
+
+### 认证相关
+
+- `POST /api/login` - 用户登录
+- `POST /api/logout` - 用户登出
+- `PUT /api/settings` - 更新用户名和密码
+
+### 数据管理
+
+- `GET /api/data` - 获取所有文件夹和书签
+- `GET /api/trash` - 获取回收站内容
+
+### 文件夹操作
+
+- `POST /api/folders` - 创建文件夹
+- `PUT /api/folders/:id` - 更新文件夹
+- `DELETE /api/folders/:id` - 删除文件夹(软删除)
+- `POST /api/restore/folders/:id` - 恢复文件夹
+- `DELETE /api/trash/folders/:id` - 永久删除文件夹
+
+### 书签操作
+
+- `POST /api/bookmarks` - 创建书签
+- `PUT /api/bookmarks/:id` - 更新书签
+- `DELETE /api/bookmarks/:id` - 删除书签(软删除)
+- `POST /api/restore/bookmarks/:id` - 恢复书签
+- `DELETE /api/trash/bookmarks/:id` - 永久删除书签
+
+### 导入导出
+
+- `GET /api/export` - 导出书签为 HTML 格式
+- `POST /api/import` - 导入 Netscape HTML 格式书签
+
+## 🗄️ 数据库结构
+
+### folders 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER | 主键 |
+| name | TEXT | 文件夹名称 |
+| parent_id | INTEGER | 父文件夹 ID |
+| is_deleted | INTEGER | 是否已删除 (0/1) |
+| created_at | TIMESTAMP | 创建时间 |
+
+### bookmarks 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER | 主键 |
+| title | TEXT | 书签标题 |
+| url | TEXT | 书签 URL |
+| description | TEXT | 描述 |
+| folder_id | INTEGER | 所属文件夹 ID |
+| is_deleted | INTEGER | 是否已删除 (0/1) |
+| created_at | TIMESTAMP | 创建时间 |
+
+### settings 表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| key | TEXT | 设置键 (主键) |
+| value | TEXT | 设置值 |
+
+## 🔒 安全建议
+
+1. **修改默认密码**: 部署后立即登录并修改默认的用户名和密码
+2. **使用 HTTPS**: Cloudflare Workers 默认提供 HTTPS
+3. **定期备份**: 定期导出书签数据作为备份
+4. **API Token 安全**: 不要将 Cloudflare API Token 提交到代码库
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request!
+
+## 📄 许可证
+
+ISC License
+
+## 🙋 常见问题
+
+### 如何重置密码?
+
+如果忘记密码,可以通过 Wrangler CLI 直接修改数据库:
+
+```bash
+npx wrangler d1 execute bookmarks-db --remote --command="UPDATE settings SET value='newpassword' WHERE key='password'"
+```
+
+### 如何备份数据?
+
+1. 使用应用内的导出功能导出 HTML 格式书签
+2. 或使用 Wrangler 导出整个数据库:
+
+```bash
+npx wrangler d1 export bookmarks-db --remote --output=backup.sql
+```
+
+### 如何查看数据库内容?
+
+```bash
+# 查看所有书签
+npx wrangler d1 execute bookmarks-db --remote --command="SELECT * FROM bookmarks"
+
+# 查看所有文件夹
+npx wrangler d1 execute bookmarks-db --remote --command="SELECT * FROM folders"
+```
+
+## 📞 支持
+
+如有问题,请提交 [Issue](https://github.com/YOUR_USERNAME/web-bookmarks/issues)
+
+---
+
+⭐ 如果这个项目对你有帮助,请给个 Star!

@@ -1,0 +1,11 @@
+name = "web-bookmarks"
+compatibility_date = "2024-11-21"
+main = "src/index.ts"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "bookmarks-db"
+database_id = "56ba610f-f5f9-4771-8ac5-957d89fce6a4" # Placeholder required by newer Wrangler versions
+
+# [observability]
+# enabled = true
