@@ -1,0 +1,17 @@
+{
+    "manifest_version": 3,
+    "name": "Web Bookmarks Extension",
+    "version": "1.0",
+    "description": "Quickly save bookmarks to your Web Bookmarks app.",
+    "permissions": [
+        "activeTab",
+        "storage",
+        "scripting"
+    ],
+    "action": {
+        "default_popup": "popup.html"
+    },
+    "host_permissions": [
+        "<all_urls>"
+    ]
+}

@@ -1,6 +1,6 @@
 export const main = `
     <!-- Main Content -->
-    <div x-show="loggedIn" class="min-h-screen flex flex-col" x-cloak>
+    <div x-show="loggedIn" class="h-screen flex flex-col" x-cloak>
         <!-- Navbar -->
         <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -56,8 +56,8 @@ export const main = `
 
         <div class="flex flex-1 overflow-hidden">
             <!-- Sidebar -->
-            <aside class="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 overflow-y-auto hidden md:block">
-                <div class="p-4 space-y-1">
+            <aside class="w-64 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 hidden md:flex md:flex-col overflow-hidden">
+                <div class="p-4 space-y-1 flex-shrink-0">
                     <button @click="currentFolderId = null; currentView = 'home'; searchQuery = ''" :class="{'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400': currentFolderId === null && currentView === 'home', 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700': !(currentFolderId === null && currentView === 'home')}" class="w-full flex items-center px-3 py-2 rounded-lg transition-colors font-medium">
                         <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
                         所有书签
@@ -69,46 +69,15 @@ export const main = `
                     </button>
                 </div>
                 
-                <div class="px-4 py-2">
+                <div class="flex-1 overflow-y-auto px-4 py-2">
                     <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">文件夹</h3>
-                    <div class="space-y-0.5">
-                        <template x-for="folder in rootFolders" :key="folder.id">
-                            <div>
-                                <button @click="toggleFolder(folder.id); currentFolderId = folder.id; currentView = 'home'" :class="{'bg-gray-100 dark:bg-gray-700': currentFolderId === folder.id}" class="w-full flex items-center px-2 py-1.5 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                    <svg @click.stop="toggleFolder(folder.id)" class="w-4 h-4 mr-1.5 text-gray-400 transform transition-transform cursor-pointer" :class="{'rotate-90': expandedFolders[folder.id]}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                    <svg class="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
-                                    <span class="truncate" x-text="folder.name"></span>
-                                </button>
-                                
-                                <div x-show="expandedFolders[folder.id]" class="pl-4 space-y-0.5 mt-0.5" x-collapse>
-                                    <template x-for="child in getChildFolders(folder.id)" :key="child.id">
-                                        <div>
-                                            <button @click="toggleFolder(child.id); currentFolderId = child.id; currentView = 'home'" :class="{'bg-gray-100 dark:bg-gray-700': currentFolderId === child.id}" class="w-full flex items-center px-2 py-1.5 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                                <svg @click.stop="toggleFolder(child.id)" class="w-4 h-4 mr-1.5 text-gray-400 transform transition-transform cursor-pointer" :class="{'rotate-90': expandedFolders[child.id]}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
-                                                <svg class="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
-                                                <span class="truncate" x-text="child.name"></span>
-                                            </button>
-                                            
-                                            <div x-show="expandedFolders[child.id]" class="pl-4 space-y-0.5 mt-0.5" x-collapse>
-                                                <template x-for="subChild in getChildFolders(child.id)" :key="subChild.id">
-                                                    <button @click="currentFolderId = subChild.id; currentView = 'home'" :class="{'bg-gray-100 dark:bg-gray-700': currentFolderId === subChild.id}" class="w-full flex items-center px-2 py-1.5 rounded-md text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
-                                                        <span class="w-4 h-4 mr-1.5"></span>
-                                                        <svg class="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
-                                                        <span class="truncate" x-text="subChild.name"></span>
-                                                    </button>
-                                                </template>
-                                            </div>
-                                        </div>
-                                    </template>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
+                    <div class="space-y-0.5" x-html="sidebarHtml" @click="handleSidebarClick($event)"></div>
                 </div>
             </aside>
 
             <!-- Main Content Area -->
-            <main class="flex-1 overflow-y-auto bg-gray-50 dark:bg-gray-900 p-4 sm:p-8">
+            <main class="flex-1 flex flex-col overflow-hidden min-h-0 bg-gray-50 dark:bg-gray-900">
+                <div class="p-4 sm:p-8 flex-shrink-0">
                 
                 <!-- Breadcrumbs (Home View) -->
                 <div x-show="currentView === 'home' && !searchQuery" class="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-6 overflow-x-auto whitespace-nowrap no-scrollbar">
@@ -151,103 +120,107 @@ export const main = `
                     </button>
                 </div>
 
-                <!-- Folders Grid -->
-                <div x-show="currentFolders.length > 0" class="mb-8">
-                    <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">文件夹</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                        <template x-for="folder in currentFolders" :key="folder.id">
-                            <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 transition-all cursor-pointer" @click="currentView === 'home' ? currentFolderId = folder.id : null">
-                                <div class="flex flex-col items-center text-center">
-                                    <div class="w-12 h-12 mb-3 text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
-                                        <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
-                                    </div>
-                                    <h3 class="text-sm font-medium text-gray-900 dark:text-gray-200 truncate w-full" x-text="folder.name"></h3>
-                                    <p class="text-xs text-gray-500 dark:text-gray-400 mt-1" x-text="currentView === 'home' ? (folders.filter(f => f.parent_id === folder.id).length + ' 文件夹') : '已删除'"></p>
-                                </div>
-                                
-                                <!-- Home View Actions -->
-                                <div x-show="currentView === 'home'" class="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all">
-                                    <button @click.stop="openFolderModal(folder)" class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full" title="重命名">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                    </button>
-                                    <button @click.stop="deleteFolder(folder.id)" class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full" title="删除">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                    </button>
-                                </div>
-
-                                <!-- Trash View Actions -->
-                                <div x-show="currentView === 'trash'" class="absolute inset-0 bg-black bg-opacity-50 rounded-xl flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                                    <button @click.stop="restoreFolder(folder.id)" class="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors" title="还原">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                                    </button>
-                                    <button @click.stop="permanentDeleteFolder(folder.id)" class="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="永久删除">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                    </button>
-                                </div>
-                            </div>
-                        </template>
-                    </div>
                 </div>
-
-                <!-- Bookmarks Grid -->
-                <div x-show="currentBookmarks.length > 0">
-                    <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">书签</h3>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                        <template x-for="bookmark in currentBookmarks" :key="bookmark.id">
-                            <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 transition-all">
-                                <a :href="currentView === 'home' ? bookmark.url : '#'" :target="currentView === 'home' ? '_blank' : ''" class="flex items-start space-x-3">
-                                    <div class="flex-shrink-0 w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 font-bold text-lg uppercase">
-                                        <img :src="'https://www.google.com/s2/favicons?sz=64&domain=' + bookmark.url" class="w-6 h-6" @error="$el.style.display='none'" />
-                                        <span x-show="!$el.previousElementSibling || $el.previousElementSibling.style.display === 'none'" x-text="bookmark.title.charAt(0)"></span>
+                <div class="flex-1 overflow-y-auto px-4 sm:px-8 pb-8">
+                    <!-- Folders Grid -->
+                    <div x-show="currentFolders.length > 0" class="mb-8">
+                        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">文件夹</h3>
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                            <template x-for="folder in currentFolders" :key="folder.id">
+                                <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 transition-all cursor-pointer folder-item" 
+                                     @click="currentView === 'home' ? currentFolderId = folder.id : null">
+                                    <div class="flex flex-col items-center text-center">
+                                        <div class="w-12 h-12 mb-3 text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform pointer-events-none">
+                                            <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
+                                        </div>
+                                        <h3 class="text-sm font-medium text-gray-900 dark:text-gray-200 truncate w-full pointer-events-none" x-text="folder.name"></h3>
+                                        <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 pointer-events-none" x-text="currentView === 'home' ? (folders.filter(f => f.parent_id === folder.id).length + ' 文件夹, ' + getFolderBookmarkCount(folder.id) + ' 书签') : '已删除'"></p>
                                     </div>
-                                    <div class="flex-1 min-w-0">
-                                        <h3 class="text-sm font-medium text-gray-900 dark:text-gray-200 truncate" x-text="bookmark.title"></h3>
-                                        <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5" x-text="bookmark.url"></p>
+                                    
+                                    <!-- Home View Actions -->
+                                    <div x-show="currentView === 'home'" class="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+                                        <button @click.stop="openFolderModal(folder)" class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full" title="重命名">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </button>
+                                        <button @click.stop="deleteFolder(folder.id)" class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full" title="删除">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
                                     </div>
-                                </a>
-                                
-                                <!-- Home View Actions -->
-                                <div x-show="currentView === 'home'" class="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all">
-                                    <button @click.prevent="openBookmarkModal(bookmark)" class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full" title="编辑">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                                    </button>
-                                    <button @click.prevent="deleteBookmark(bookmark.id)" class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full" title="删除">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                    </button>
-                                </div>
 
-                                <!-- Trash View Actions -->
-                                <div x-show="currentView === 'trash'" class="absolute inset-0 bg-black bg-opacity-50 rounded-xl flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
-                                    <button @click.stop="restoreBookmark(bookmark.id)" class="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors" title="还原">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                                    </button>
-                                    <button @click.stop="permanentDeleteBookmark(bookmark.id)" class="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="永久删除">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                                    </button>
+                                    <!-- Trash View Actions -->
+                                    <div x-show="currentView === 'trash'" class="absolute inset-0 bg-black bg-opacity-50 rounded-xl flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                                        <button @click.stop="restoreFolder(folder.id)" class="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors" title="还原">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                        </button>
+                                        <button @click.stop="permanentDeleteFolder(folder.id)" class="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="永久删除">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
+                                    </div>
                                 </div>
-                            </div>
-                        </template>
+                            </template>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Empty State -->
-                <div x-show="currentFolders.length === 0 && currentBookmarks.length === 0" class="flex flex-col items-center justify-center py-20 text-center">
-                    <div class="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6">
-                        <svg x-show="currentView === 'home' && !searchQuery" class="w-12 h-12 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
-                        <svg x-show="currentView === 'trash'" class="w-12 h-12 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
-                        <svg x-show="searchQuery" class="w-12 h-12 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <!-- Bookmarks Grid -->
+                    <div x-show="currentBookmarks.length > 0">
+                        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">书签</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                            <template x-for="bookmark in currentBookmarks" :key="bookmark.id">
+                                <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 transition-all">
+                                    <a :href="currentView === 'home' ? bookmark.url : '#'" :target="currentView === 'home' ? '_blank' : ''" class="flex items-start space-x-3">
+                                        <div class="flex-shrink-0 w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 font-bold text-lg uppercase">
+                                            <img :src="'https://www.google.com/s2/favicons?sz=64&domain=' + bookmark.url" class="w-6 h-6" @error="$el.style.display='none'" />
+                                            <span x-show="!$el.previousElementSibling || $el.previousElementSibling.style.display === 'none'" x-text="bookmark.title.charAt(0)"></span>
+                                        </div>
+                                        <div class="flex-1 min-w-0 pr-16">
+                                            <h3 class="text-sm font-medium text-gray-900 dark:text-gray-200 truncate" x-text="bookmark.title"></h3>
+                                            <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5" x-text="bookmark.url"></p>
+                                        </div>
+                                    </a>
+                                    
+                                    <!-- Home View Actions -->
+                                    <div x-show="currentView === 'home'" class="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+                                        <button @click.prevent="openBookmarkModal(bookmark)" class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full" title="编辑">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                        </button>
+                                        <button @click.prevent="deleteBookmark(bookmark.id)" class="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-full" title="删除">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
+                                    </div>
+
+                                    <!-- Trash View Actions -->
+                                    <div x-show="currentView === 'trash'" class="absolute inset-0 bg-black bg-opacity-50 rounded-xl flex items-center justify-center space-x-2 opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm">
+                                        <button @click.stop="restoreBookmark(bookmark.id)" class="p-2 bg-green-500 text-white rounded-full hover:bg-green-600 transition-colors" title="还原">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                        </button>
+                                        <button @click.stop="permanentDeleteBookmark(bookmark.id)" class="p-2 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors" title="永久删除">
+                                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
                     </div>
-                    <h3 class="text-xl font-medium text-gray-900 dark:text-gray-200 mb-2" x-text="currentView === 'trash' ? '回收站为空' : (searchQuery ? '未找到相关内容' : '这里空空如也')"></h3>
-                    <p class="text-gray-500 dark:text-gray-400 max-w-sm mx-auto mb-8" x-text="currentView === 'trash' ? '删除的项目会显示在这里' : (searchQuery ? '尝试更换关键词搜索' : '当前文件夹下还没有任何内容。您可以创建新的文件夹或添加书签。')"></p>
-                    <div class="flex space-x-4" x-show="currentView === 'home' && !searchQuery">
-                        <button @click="openFolderModal()" class="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors">
-                            新建文件夹
-                        </button>
-                        <button @click="openBookmarkModal()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-lg transition-colors">
-                            添加书签
-                        </button>
+
+                    <!-- Empty State -->
+                    <div x-show="currentFolders.length === 0 && currentBookmarks.length === 0" class="flex flex-col items-center justify-center py-20 text-center">
+                        <div class="w-24 h-24 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-6">
+                            <svg x-show="currentView === 'home' && !searchQuery" class="w-12 h-12 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"></path></svg>
+                            <svg x-show="currentView === 'trash'" class="w-12 h-12 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            <svg x-show="searchQuery" class="w-12 h-12 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                        </div>
+                        <h3 class="text-xl font-medium text-gray-900 dark:text-gray-200 mb-2" x-text="currentView === 'trash' ? '回收站为空' : (searchQuery ? '未找到相关内容' : '这里空空如也')"></h3>
+                        <p class="text-gray-500 dark:text-gray-400 max-w-sm mx-auto mb-8" x-text="currentView === 'trash' ? '删除的项目会显示在这里' : (searchQuery ? '尝试更换关键词搜索' : '当前文件夹下还没有任何内容。您可以创建新的文件夹或添加书签。')"></p>
+                        <div class="flex space-x-4" x-show="currentView === 'home' && !searchQuery">
+                            <button @click="openFolderModal()" class="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors">
+                                新建文件夹
+                            </button>
+                            <button @click="openBookmarkModal()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-lg transition-colors">
+                                添加书签
+                            </button>
+                        </div>
                     </div>
-                </div>
+
                 
             </main>
         </div>

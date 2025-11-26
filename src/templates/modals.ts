@@ -25,6 +25,61 @@ export const modals = `
                     <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">网址</label>
                     <input type="url" x-model="newBookmarkUrl" @keyup.enter="createBookmark()" placeholder="https://example.com" class="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow">
                 </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">位置</label>
+                    <div class="relative" @click.away="selectorOpen = false">
+                        <button @click="selectorOpen = !selectorOpen" class="w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg p-3 text-left flex justify-between items-center focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow">
+                            <span x-text="getFolderName(newBookmarkFolderId)"></span>
+                            <svg class="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </button>
+                        
+                        <div x-show="selectorOpen" class="absolute z-10 mt-1 w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto" x-transition>
+                            <div class="py-1">
+                                <button @click="newBookmarkFolderId = null; selectorOpen = false" class="w-full text-left px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-900 dark:text-white text-sm">
+                                    所有书签 (根目录)
+                                </button>
+                                <template x-for="folder in rootFolders" :key="folder.id">
+                                    <div>
+                                        <div class="flex items-center hover:bg-gray-100 dark:hover:bg-gray-600 px-2 py-1">
+                                            <button @click.stop="toggleSelector(folder.id)" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                <svg class="w-4 h-4 transform transition-transform" :class="{'rotate-90': selectorExpanded[folder.id]}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                            </button>
+                                            <button @click="newBookmarkFolderId = folder.id; selectorOpen = false" class="flex-1 text-left text-sm text-gray-900 dark:text-white truncate px-1 py-1">
+                                                <span x-text="folder.name"></span>
+                                            </button>
+                                        </div>
+                                        
+                                        <div x-show="selectorExpanded[folder.id]" class="pl-4 border-l border-gray-200 dark:border-gray-600 ml-4" x-collapse>
+                                            <template x-for="child in getChildFolders(folder.id)" :key="child.id">
+                                                <div>
+                                                    <div class="flex items-center hover:bg-gray-100 dark:hover:bg-gray-600 px-2 py-1">
+                                                        <button @click.stop="toggleSelector(child.id)" class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                                                            <svg class="w-4 h-4 transform transition-transform" :class="{'rotate-90': selectorExpanded[child.id]}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                                                        </button>
+                                                        <button @click="newBookmarkFolderId = child.id; selectorOpen = false" class="flex-1 text-left text-sm text-gray-900 dark:text-white truncate px-1 py-1">
+                                                            <span x-text="child.name"></span>
+                                                        </button>
+                                                    </div>
+                                                    
+                                                    <div x-show="selectorExpanded[child.id]" class="pl-4 border-l border-gray-200 dark:border-gray-600 ml-4" x-collapse>
+                                                        <template x-for="subChild in getChildFolders(child.id)" :key="subChild.id">
+                                                            <div class="flex items-center hover:bg-gray-100 dark:hover:bg-gray-600 px-2 py-1">
+                                                                <span class="w-6"></span>
+                                                                <button @click="newBookmarkFolderId = subChild.id; selectorOpen = false" class="flex-1 text-left text-sm text-gray-900 dark:text-white truncate px-1 py-1">
+                                                                    <span x-text="subChild.name"></span>
+                                                                </button>
+                                                            </div>
+                                                        </template>
+                                                    </div>
+                                                </div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
             <div class="flex justify-end space-x-3">
                 <button @click="showBookmarkModal = false" class="px-5 py-2.5 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg font-medium transition-colors">取消</button>

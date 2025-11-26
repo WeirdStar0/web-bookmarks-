@@ -3,15 +3,16 @@ export const scripts = `
         function app() {
             return {
                 loggedIn: false,
+                isCheckingAuth: true,
                 loginForm: { username: '', password: '' },
                 loginError: '',
                 
                 folders: [],
                 bookmarks: [],
-                currentFolderId: null,
+                currentFolderId: JSON.parse(localStorage.getItem('currentFolderId')) || null,
                 
                 searchQuery: '',
-                currentView: 'home', // 'home' | 'trash'
+                currentView: localStorage.getItem('currentView') || 'home', // 'home' | 'trash'
                 trashFolders: [],
                 trashBookmarks: [],
                 expandedFolders: {}, // For sidebar tree
@@ -28,6 +29,9 @@ export const scripts = `
                 showBookmarkModal: false,
                 newBookmarkTitle: '',
                 newBookmarkUrl: '',
+                newBookmarkFolderId: null,
+                selectorExpanded: {}, // For custom folder selector in modal
+                selectorOpen: false, // For custom folder selector dropdown visibility
                 
                 showSettingsModal: false,
                 settingsForm: { username: '', password: '' },
@@ -41,6 +45,9 @@ export const scripts = `
                 init() {
                     if (this.darkMode) document.documentElement.classList.add('dark');
                     this.checkAuth();
+                    
+                    this.$watch('currentFolderId', value => localStorage.setItem('currentFolderId', JSON.stringify(value)));
+                    this.$watch('currentView', value => localStorage.setItem('currentView', value));
                 },
 
                 async checkAuth() {
@@ -49,6 +56,8 @@ export const scripts = `
                         this.loggedIn = true;
                     } catch (e) {
                         this.loggedIn = false;
+                    } finally {
+                        this.isCheckingAuth = false;
                     }
                 },
 
@@ -141,6 +150,97 @@ export const scripts = `
                     return this.folders.filter(f => f.parent_id === parentId);
                 },
 
+                getFolderBookmarkCount(folderId) {
+                    return this.bookmarks.filter(b => b.folder_id === folderId).length;
+                },
+
+                get flattenedFolders() {
+                    const buildHierarchy = (parentId = null, level = 0) => {
+                        const children = this.folders.filter(f => f.parent_id === parentId);
+                        // Sort by sort_order then name (though backend already does this, good to be safe or if we re-sort locally)
+                        children.sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+                        
+                        let result = [];
+                        for (const child of children) {
+                            result.push({
+                                ...child,
+                                level: level,
+                                displayName: '\u00A0'.repeat(level * 4) + child.name
+                            });
+                            result = result.concat(buildHierarchy(child.id, level + 1));
+                        }
+                        return result;
+                    };
+                    return buildHierarchy(null, 0);
+                },
+
+                get sidebarHtml() {
+                    const renderFolder = (folder, level = 0) => {
+                        const isExpanded = this.expandedFolders[folder.id];
+                        const isSelected = this.currentFolderId === folder.id;
+                        const hasChildren = this.folders.some(f => f.parent_id === folder.id);
+                        const paddingLeft = level * 16 + 8;
+                        
+                        const selectedClass = isSelected ? 'bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
+                        const expandedClass = isExpanded ? 'rotate-90' : '';
+                        const invisibleClass = !hasChildren ? 'invisible' : '';
+                        
+                        let html = '<div class="select-none">';
+                        html += '<div class="w-full flex items-center py-1.5 rounded-md text-sm transition-colors ' + selectedClass + '" style="padding-left: ' + paddingLeft + 'px">';
+                        html += '<div class="p-1 mr-0.5 cursor-pointer text-gray-400 transform transition-transform ' + expandedClass + ' ' + invisibleClass + '" data-action="toggle" data-id="' + folder.id + '">';
+                        html += '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>';
+                        html += '</div>';
+                        html += '<div class="flex-1 flex items-center cursor-pointer overflow-hidden" data-action="select" data-id="' + folder.id + '">';
+                        html += '<svg class="w-5 h-5 mr-2 text-yellow-500 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>';
+                        html += '<span class="truncate">' + folder.name + '</span>';
+                        html += '<span class="text-xs text-gray-400 ml-2">' + this.getFolderBookmarkCount(folder.id) + '</span>';
+                        html += '</div>';
+                        html += '</div>';
+                        html += '</div>';
+
+                        if (isExpanded && hasChildren) {
+                            const children = this.folders.filter(f => f.parent_id === folder.id);
+                            children.sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+                            html += '<div class="space-y-0.5 mt-0.5">';
+                            children.forEach(child => {
+                                html += renderFolder(child, level + 1);
+                            });
+                            html += '</div>';
+                        }
+                        return html;
+                    };
+
+                    const roots = this.folders.filter(f => !f.parent_id);
+                    roots.sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+                    return roots.map(f => renderFolder(f)).join('');
+                },
+
+                handleSidebarClick(event) {
+                    const target = event.target.closest('[data-action]');
+                    if (!target) return;
+
+                    const action = target.dataset.action;
+                    const idStr = target.dataset.id;
+                    const id = parseInt(idStr, 10);
+
+                    if (action === 'toggle') {
+                        this.toggleFolder(id);
+                    } else if (action === 'select') {
+                        this.currentFolderId = id;
+                        this.currentView = 'home';
+                    }
+                },
+
+                getFolderName(id) {
+                    if (!id) return '所有书签 (根目录)';
+                    const folder = this.folders.find(f => f.id === id);
+                    return folder ? folder.name : '未知文件夹';
+                },
+
+                toggleSelector(id) {
+                    this.selectorExpanded[id] = !this.selectorExpanded[id];
+                },
+
                 openFolderModal(folder = null) {
                     if (folder) {
                         this.editMode = true;
@@ -187,12 +287,16 @@ export const scripts = `
                         this.editingId = bookmark.id;
                         this.newBookmarkTitle = bookmark.title;
                         this.newBookmarkUrl = bookmark.url;
+                        this.newBookmarkFolderId = bookmark.folder_id;
                     } else {
                         this.editMode = false;
                         this.editingId = null;
                         this.newBookmarkTitle = '';
                         this.newBookmarkUrl = '';
+                        this.newBookmarkFolderId = this.currentFolderId;
                     }
+                    this.selectorExpanded = {}; // Reset expansion state
+                    this.selectorOpen = false;
                     this.showBookmarkModal = true;
                 },
 
@@ -205,7 +309,8 @@ export const scripts = `
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({
                                 title: this.newBookmarkTitle || this.newBookmarkUrl,
-                                url: this.newBookmarkUrl
+                                url: this.newBookmarkUrl,
+                                folder_id: this.newBookmarkFolderId
                             })
                         });
                     } else {
@@ -215,7 +320,7 @@ export const scripts = `
                             body: JSON.stringify({
                                 title: this.newBookmarkTitle || this.newBookmarkUrl,
                                 url: this.newBookmarkUrl,
-                                folder_id: this.currentFolderId
+                                folder_id: this.newBookmarkFolderId
                             })
                         });
                     }
@@ -350,7 +455,7 @@ export const scripts = `
                             event.target.value = '';
                         }
                     });
-                }
+                },
             }
         }
     </script>

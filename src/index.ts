@@ -21,6 +21,13 @@ app.use('*', async (c, next) => {
         // Ignore error if table doesn't exist yet (will be created by d1 execute)
     }
 
+    // Migration: Ensure sort_order column exists in folders
+    try {
+        await c.env.DB.prepare('ALTER TABLE folders ADD COLUMN sort_order INTEGER DEFAULT 0').run();
+    } catch (e) {
+        // Ignore error if column already exists
+    }
+
     // Public routes
     if (c.req.path === '/api/login' || (c.req.path === '/' && !getCookie(c, 'auth'))) {
         return next();
@@ -78,7 +85,7 @@ app.put('/api/settings', async (c) => {
 // API: Get all data (Protected)
 app.get('/api/data', async (c) => {
     if (!getCookie(c, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
-    const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 0 ORDER BY name').all();
+    const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 0 ORDER BY sort_order ASC, name ASC').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 0 ORDER BY created_at DESC').all();
     return c.json({ folders, bookmarks });
 });
@@ -97,6 +104,16 @@ app.put('/api/folders/:id', async (c) => {
     const id = c.req.param('id');
     const { name } = await c.req.json();
     await c.env.DB.prepare('UPDATE folders SET name = ? WHERE id = ?').bind(name, id).run();
+    return c.json({ success: true });
+});
+
+// API: Reorder Folders
+app.put('/api/folders/reorder', async (c) => {
+    const { orderedIds } = await c.req.json();
+    const batch = orderedIds.map((id: number, index: number) => {
+        return c.env.DB.prepare('UPDATE folders SET sort_order = ? WHERE id = ?').bind(index, id);
+    });
+    await c.env.DB.batch(batch);
     return c.json({ success: true });
 });
 
@@ -136,8 +153,13 @@ app.post('/api/bookmarks', async (c) => {
 // API: Update Bookmark
 app.put('/api/bookmarks/:id', async (c) => {
     const id = c.req.param('id');
-    const { title, url } = await c.req.json();
-    await c.env.DB.prepare('UPDATE bookmarks SET title = ?, url = ? WHERE id = ?').bind(title, url, id).run();
+    const { title, url, folder_id } = await c.req.json();
+
+    if (folder_id !== undefined) {
+        await c.env.DB.prepare('UPDATE bookmarks SET title = ?, url = ?, folder_id = ? WHERE id = ?').bind(title, url, folder_id, id).run();
+    } else {
+        await c.env.DB.prepare('UPDATE bookmarks SET title = ?, url = ? WHERE id = ?').bind(title, url, id).run();
+    }
     return c.json({ success: true });
 });
 

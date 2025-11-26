@@ -12,6 +12,36 @@ export const head = `
     </script>
     <style>
         [x-cloak] { display: none !important; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background-color: #e5e7eb; /* gray-200 */
+            border-radius: 4px;
+            border: 2px solid transparent;
+            background-clip: content-box;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #d1d5db; /* gray-300 */
+        }
+        
+        /* Dark mode scrollbar */
+        .dark ::-webkit-scrollbar-thumb {
+            background-color: #374151; /* gray-700 */
+        }
+        
+        .dark ::-webkit-scrollbar-thumb:hover {
+            background-color: #4b5563; /* gray-600 */
+        }
     </style>
 </head>
 `;

@@ -1,6 +1,6 @@
 export const login = `
     <!-- Login Form -->
-    <div x-show="!loggedIn" class="min-h-screen flex items-center justify-center px-4" x-cloak>
+    <div x-show="!loggedIn && !isCheckingAuth" class="min-h-screen flex items-center justify-center px-4" x-cloak>
         <div class="max-w-md w-full bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 transform transition-all">
             <div class="text-center mb-8">
                 <div class="inline-block p-3 rounded-full bg-blue-100 dark:bg-blue-900 mb-4">
