@@ -3,6 +3,20 @@ export const main = `
     <div x-show="loggedIn" class="h-screen flex flex-col" x-cloak>
         <!-- Navbar -->
         <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
+            <!-- Global Loading Indicator -->
+            <div x-show="isOperationPending" class="absolute top-0 left-0 w-full h-1 bg-blue-100 dark:bg-blue-900 overflow-hidden z-50">
+                <div class="h-full bg-blue-600 animate-progress"></div>
+            </div>
+            <style>
+                @keyframes progress {
+                    0% { width: 0%; margin-left: 0%; }
+                    50% { width: 50%; margin-left: 25%; }
+                    100% { width: 100%; margin-left: 100%; }
+                }
+                .animate-progress {
+                    animation: progress 1.5s infinite linear;
+                }
+            </style>
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16">
                     <div class="flex items-center flex-1">
@@ -110,11 +124,11 @@ export const main = `
 
                 <!-- Action Buttons (Home View) -->
                 <div x-show="currentView === 'home' && !searchQuery" class="flex space-x-3 mb-6">
-                    <button @click="openFolderModal()" class="flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium shadow-sm">
+                    <button @click="openFolderModal()" :disabled="isOperationPending" :class="{'opacity-50 cursor-not-allowed': isOperationPending}" class="flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors text-sm font-medium shadow-sm">
                         <svg class="w-5 h-5 mr-2 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
                         新建文件夹
                     </button>
-                    <button @click="openBookmarkModal()" class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm text-sm font-medium">
+                    <button @click="openBookmarkModal()" :disabled="isOperationPending" :class="{'opacity-50 cursor-not-allowed': isOperationPending}" class="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-sm text-sm font-medium">
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
                         新建书签
                     </button>
@@ -123,7 +137,10 @@ export const main = `
                 </div>
                 <div class="flex-1 overflow-y-auto px-4 sm:px-8 pb-8">
                     <!-- Folders Grid -->
-                    <div x-show="currentFolders.length > 0" class="mb-8">
+                    <div x-show="currentFolders.length > 0" class="mb-8"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0 transform scale-95"
+                         x-transition:enter-end="opacity-100 transform scale-100">
                         <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">文件夹</h3>
                         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                             <template x-for="folder in currentFolders" :key="folder.id">
@@ -162,7 +179,10 @@ export const main = `
                     </div>
 
                     <!-- Bookmarks Grid -->
-                    <div x-show="currentBookmarks.length > 0">
+                    <div x-show="currentBookmarks.length > 0"
+                         x-transition:enter="transition ease-out duration-300"
+                         x-transition:enter-start="opacity-0 transform scale-95"
+                         x-transition:enter-end="opacity-100 transform scale-100">
                         <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">书签</h3>
                         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                             <template x-for="bookmark in currentBookmarks" :key="bookmark.id">
@@ -212,10 +232,10 @@ export const main = `
                         <h3 class="text-xl font-medium text-gray-900 dark:text-gray-200 mb-2" x-text="currentView === 'trash' ? '回收站为空' : (searchQuery ? '未找到相关内容' : '这里空空如也')"></h3>
                         <p class="text-gray-500 dark:text-gray-400 max-w-sm mx-auto mb-8" x-text="currentView === 'trash' ? '删除的项目会显示在这里' : (searchQuery ? '尝试更换关键词搜索' : '当前文件夹下还没有任何内容。您可以创建新的文件夹或添加书签。')"></p>
                         <div class="flex space-x-4" x-show="currentView === 'home' && !searchQuery">
-                            <button @click="openFolderModal()" class="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors">
+                            <button @click="openFolderModal()" :disabled="isOperationPending" :class="{'opacity-50 cursor-not-allowed': isOperationPending}" class="px-6 py-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors">
                                 新建文件夹
                             </button>
-                            <button @click="openBookmarkModal()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-lg transition-colors">
+                            <button @click="openBookmarkModal()" :disabled="isOperationPending" :class="{'opacity-50 cursor-not-allowed': isOperationPending}" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium shadow-lg transition-colors">
                                 添加书签
                             </button>
                         </div>

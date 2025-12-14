@@ -1,11 +1,21 @@
-
 import { Hono } from 'hono';
-import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
+import { getSignedCookie, setSignedCookie, deleteCookie, getCookie } from 'hono/cookie';
 import { html } from './html';
 
 type Bindings = {
     DB: D1Database;
 };
+
+const SECRET_KEY = 'secret-key-replace-me-in-production'; // TODO: Use env var
+
+// Helper: SHA-256 Hash
+async function hashPassword(password: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -15,7 +25,8 @@ app.use('*', async (c, next) => {
     try {
         const { results } = await c.env.DB.prepare('SELECT * FROM settings WHERE key = ?').bind('username').all();
         if (results.length === 0) {
-            await c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)').bind('username', 'admin', 'password', '12345').run();
+            const defaultPassHash = await hashPassword('12345');
+            await c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)').bind('username', 'admin', 'password', defaultPassHash).run();
         }
     } catch (e) {
         // Ignore error if table doesn't exist yet (will be created by d1 execute)
@@ -33,8 +44,8 @@ app.use('*', async (c, next) => {
         return next();
     }
 
-    // Check Auth
-    const cookie = getCookie(c, 'auth');
+    // Check Auth - Signed Cookie
+    const cookie = await getSignedCookie(c, SECRET_KEY, 'auth');
     if (!cookie) {
         if (c.req.path.startsWith('/api/')) {
             return c.json({ error: 'Unauthorized' }, 401);
@@ -61,9 +72,22 @@ app.post('/api/login', async (c) => {
     const { results: passResults } = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('password').all();
     const dbPass = passResults[0]?.value;
 
-    if (username === dbUser && password === dbPass) {
-        setCookie(c, 'auth', 'true', { httpOnly: true, secure: true, sameSite: 'Strict', maxAge: 86400 * 7 });
-        return c.json({ success: true });
+    const inputHash = await hashPassword(password);
+
+    if (username === dbUser) {
+        // 1. Check Hash
+        if (inputHash === dbPass) {
+            await setSignedCookie(c, 'auth', 'true', SECRET_KEY, { httpOnly: true, secure: true, sameSite: 'Strict', maxAge: 86400 * 7 });
+            return c.json({ success: true });
+        }
+
+        // 2. Migration: Check Plaintext (Legacy)
+        if (password === dbPass) {
+            // Match found with plaintext! Update DB to hash immediately.
+            await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(inputHash, 'password').run();
+            await setSignedCookie(c, 'auth', 'true', SECRET_KEY, { httpOnly: true, secure: true, sameSite: 'Strict', maxAge: 86400 * 7 });
+            return c.json({ success: true });
+        }
     }
     return c.json({ error: 'Invalid credentials' }, 401);
 });
@@ -78,13 +102,16 @@ app.post('/api/logout', async (c) => {
 app.put('/api/settings', async (c) => {
     const { username, password } = await c.req.json();
     if (username) await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(username, 'username').run();
-    if (password) await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(password, 'password').run();
+    if (password) {
+        const passHash = await hashPassword(password);
+        await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(passHash, 'password').run();
+    }
     return c.json({ success: true });
 });
 
 // API: Get all data (Protected)
 app.get('/api/data', async (c) => {
-    if (!getCookie(c, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 0 ORDER BY sort_order ASC, name ASC').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 0 ORDER BY created_at DESC').all();
     return c.json({ folders, bookmarks });
@@ -102,8 +129,19 @@ app.post('/api/folders', async (c) => {
 // API: Update Folder
 app.put('/api/folders/:id', async (c) => {
     const id = c.req.param('id');
-    const { name } = await c.req.json();
-    await c.env.DB.prepare('UPDATE folders SET name = ? WHERE id = ?').bind(name, id).run();
+    const { name, parent_id } = await c.req.json();
+
+    // Validate: Cannot set parent to itself (basic check, full cycle check is harder in SQL but UI should prevent it)
+    if (parent_id && parseInt(id) === parseInt(parent_id)) {
+        return c.json({ error: 'Cannot move folder into itself' }, 400);
+    }
+
+    if (parent_id !== undefined) {
+        await c.env.DB.prepare('UPDATE folders SET name = ?, parent_id = ? WHERE id = ?').bind(name, parent_id, id).run();
+    } else {
+        await c.env.DB.prepare('UPDATE folders SET name = ? WHERE id = ?').bind(name, id).run();
+    }
+
     return c.json({ success: true });
 });
 
@@ -196,7 +234,7 @@ function generateNetscapeHTML(folders: any[], bookmarks: any[], parentId: number
 
 // API: Get Trash
 app.get('/api/trash', async (c) => {
-    if (!getCookie(c, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 1 ORDER BY name').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 1 ORDER BY created_at DESC').all();
     return c.json({ folders, bookmarks });
@@ -241,7 +279,8 @@ app.delete('/api/trash/empty', async (c) => {
 
 // API: Export
 app.get('/api/export', async (c) => {
-    if (!getCookie(c, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+
 
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks').all();
@@ -264,7 +303,8 @@ app.get('/api/export', async (c) => {
 
 // API: Import
 app.post('/api/import', async (c) => {
-    if (!getCookie(c, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+
 
     const body = await c.req.text();
 
