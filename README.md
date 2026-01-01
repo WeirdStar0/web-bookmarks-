@@ -9,8 +9,13 @@
 - 🗑️ **回收站** - 软删除机制,可恢复已删除的书签和文件夹
 - 📤 **导入/导出** - 支持 Netscape HTML 格式的书签导入导出
 - 🔐 **身份验证** - 基于 Cookie 的安全认证系统
+- 🔒 **安全增强** - 输入验证、速率限制、SQL 注入防护
+- 🎯 **拖拽排序** - 拖拽文件夹和书签进行重新排序
 - ⚡ **无服务器架构** - 部署在 Cloudflare Workers,全球边缘网络加速
 - 💾 **D1 数据库** - 使用 Cloudflare D1 SQLite 数据库存储数据
+- 🎨 **优化体验** - 流畅的加载动画和响应式设计
+
+**新增功能**: 拖拽排序! 查看 [DRAG_DROP_GUIDE.md](./DRAG_DROP_GUIDE.md) 了解详情
 
 ## 🚀 技术栈
 
@@ -26,6 +31,18 @@
 - npm 或 yarn
 - Cloudflare 账号
 - Wrangler CLI (Cloudflare 开发工具)
+
+## 📢 重要提示
+
+### 🔐 安全升级
+
+如果你正在从旧版本升级,请查看 [UPGRADE.md](./UPGRADE.md) 了解最新的安全改进和部署步骤。
+
+**主要改进:**
+- ✅ 环境变量配置(不再硬编码密钥)
+- ✅ 请求速率限制(防止 DDoS 攻击)
+- ✅ 输入验证和 SQL 注入防护
+- ✅ 数据库索引优化
 
 ## 🛠️ 本地开发
 
@@ -51,17 +68,34 @@ npx wrangler d1 create bookmarks-db
 # 复制输出的 database_id 并更新 wrangler.toml 中的 database_id
 ```
 
-### 4. 初始化数据库表结构
+### 4. 配置环境变量
+
+```bash
+# 复制环境变量模板
+cp .dev.vars.example .dev.vars
+
+# 生成密钥
+openssl rand -base64 32
+
+# 将生成的密钥添加到 .dev.vars 文件
+```
+
+编辑 `.dev.vars`:
+```
+SECRET_KEY=your-generated-secret-key-here
+```
+
+### 5. 初始化数据库表结构
 
 ```bash
 # 本地开发环境
 npx wrangler d1 execute bookmarks-db --local --file=./schema.sql
 
-# 生产环境(部署后执行)
-npx wrangler d1 execute bookmarks-db --remote --file=./schema.sql
+# 应用索引优化(可选但推荐)
+npx wrangler d1 execute bookmarks-db --local --file=./migrations/002_add_indexes.sql
 ```
 
-### 5. 启动开发服务器
+### 6. 启动开发服务器
 
 ```bash
 npm run dev
@@ -75,7 +109,25 @@ npm run dev
 
 ## 📦 部署到 Cloudflare Workers
 
-### 方法一: 使用 Wrangler CLI (推荐)
+### 🆕 已有项目更新?
+
+如果你已经在 Cloudflare Workers 上部署了此项目,请查看 **[DEPLOYMENT.md](./DEPLOYMENT.md)** 了解详细的更新步骤。
+
+**快速更新命令:**
+```bash
+# 1. 设置 SECRET_KEY (首次部署必需)
+npx wrangler secret put SECRET_KEY
+
+# 2. 运行数据库迁移(添加索引优化)
+npm run migrate:remote
+
+# 3. 部署
+npm run deploy
+```
+
+### 新项目部署
+
+#### 方法一: 使用 Wrangler CLI (推荐)
 
 1. **登录 Cloudflare**
 
@@ -103,13 +155,27 @@ database_name = "bookmarks-db"
 database_id = "your-actual-database-id"  # 替换这里
 ```
 
-4. **初始化生产数据库**
+4. **设置 SECRET_KEY**
 
 ```bash
-npx wrangler d1 execute bookmarks-db --remote --file=./schema.sql
+# 生成密钥
+openssl rand -base64 32
+
+# 设置密钥
+npx wrangler secret put SECRET_KEY
 ```
 
-5. **部署应用**
+5. **初始化生产数据库**
+
+```bash
+# 创建表结构
+npx wrangler d1 execute bookmarks-db --remote --file=./schema.sql
+
+# 添加索引优化(推荐)
+npx wrangler d1 execute bookmarks-db --remote --file=./migrations/002_add_indexes.sql
+```
+
+6. **部署应用**
 
 ```bash
 npm run deploy
@@ -120,7 +186,18 @@ npm run deploy
 https://web-bookmarks.YOUR_SUBDOMAIN.workers.dev
 ```
 
-### 方法二: 使用 GitHub Actions 自动部署
+7. **(可选) 启用速率限制**
+
+```bash
+# 创建 KV 命名空间
+npx wrangler kv:namespace create RATE_LIMIT_KV
+
+# 将输出的配置添加到 wrangler.toml
+# 重新部署
+npm run deploy
+```
+
+#### 方法二: 使用 GitHub Actions 自动部署
 
 1. **设置 GitHub Secrets**
 

@@ -3,18 +3,28 @@ export const main = `
     <div x-show="loggedIn" class="h-screen flex flex-col" x-cloak>
         <!-- Navbar -->
         <nav class="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 sticky top-0 z-40">
-            <!-- Global Loading Indicator -->
-            <div x-show="isOperationPending" class="absolute top-0 left-0 w-full h-1 bg-blue-100 dark:bg-blue-900 overflow-hidden z-50">
-                <div class="h-full bg-blue-600 animate-progress"></div>
+            <!-- Enhanced Global Loading Indicator -->
+            <div x-show="isOperationPending"
+                 class="absolute top-0 left-0 w-full h-2 bg-gray-200 dark:bg-gray-700 overflow-hidden z-50"
+                 x-transition:enter="transition ease-out duration-200"
+                 x-transition:enter-start="opacity-0"
+                 x-transition:enter-end="opacity-100"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0">
+                <div class="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 bg-300% animate-shimmer"></div>
             </div>
             <style>
-                @keyframes progress {
-                    0% { width: 0%; margin-left: 0%; }
-                    50% { width: 50%; margin-left: 25%; }
-                    100% { width: 100%; margin-left: 100%; }
+                @keyframes shimmer {
+                    0% { background-position: 100% 0; }
+                    100% { background-position: 0 0; }
                 }
-                .animate-progress {
-                    animation: progress 1.5s infinite linear;
+                .animate-shimmer {
+                    background-size: 200% 100%;
+                    animation: shimmer 2s infinite linear;
+                }
+                .bg-300\% {
+                    background-size: 300% 100%;
                 }
             </style>
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -82,10 +92,12 @@ export const main = `
                         回收站
                     </button>
                 </div>
-                
+
                 <div class="flex-1 overflow-y-auto px-4 py-2">
                     <h3 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">文件夹</h3>
-                    <div class="space-y-0.5" x-html="sidebarHtml" @click="handleSidebarClick($event)"></div>
+                    <div class="space-y-0.5"
+                         x-html="sidebarHtml"
+                         @click="handleSidebarClick($event)"></div>
                 </div>
             </aside>
 
@@ -142,10 +154,20 @@ export const main = `
                          x-transition:enter-start="opacity-0 transform scale-95"
                          x-transition:enter-end="opacity-100 transform scale-100">
                         <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">文件夹</h3>
-                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4"
+                             @dragover.prevent="handleDragOver($event, 'folder')"
+                             @drop="handleDrop($event, 'folder')">
                             <template x-for="folder in currentFolders" :key="folder.id">
-                                <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 transition-all cursor-pointer folder-item" 
-                                     @click="currentView === 'home' ? currentFolderId = folder.id : null">
+                                <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border-2 border-gray-100 dark:border-gray-700 transition-all duration-200 cursor-move folder-item"
+                                     :draggable="currentView === 'home' && !searchQuery"
+                                     @dragstart="handleDragStart($event, folder, 'folder')"
+                                     @dragend="handleDragEnd($event)"
+                                     @click="currentView === 'home' ? currentFolderId = folder.id : null"
+                                     :class="{
+                                        'opacity-40 scale-95 shadow-lg': draggedItem?.type === 'folder' && draggedItem?.id === folder.id,
+                                        'border-blue-500 shadow-lg shadow-blue-500/20 bg-blue-50 dark:bg-blue-900/20': dropTarget?.type === 'folder' && dropTarget?.id === folder.id,
+                                        'cursor-grab active:cursor-grabbing': currentView === 'home' && !searchQuery
+                                     }">
                                     <div class="flex flex-col items-center text-center">
                                         <div class="w-12 h-12 mb-3 text-yellow-500 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform pointer-events-none">
                                             <svg class="w-7 h-7" fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>
@@ -153,7 +175,7 @@ export const main = `
                                         <h3 class="text-sm font-medium text-gray-900 dark:text-gray-200 truncate w-full pointer-events-none" x-text="folder.name"></h3>
                                         <p class="text-xs text-gray-500 dark:text-gray-400 mt-1 pointer-events-none" x-text="currentView === 'home' ? (folders.filter(f => f.parent_id === folder.id).length + ' 文件夹, ' + getFolderBookmarkCount(folder.id) + ' 书签') : '已删除'"></p>
                                     </div>
-                                    
+
                                     <!-- Home View Actions -->
                                     <div x-show="currentView === 'home'" class="absolute top-2 right-2 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all">
                                         <button @click.stop="openFolderModal(folder)" class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full" title="重命名">
@@ -184,20 +206,30 @@ export const main = `
                          x-transition:enter-start="opacity-0 transform scale-95"
                          x-transition:enter-end="opacity-100 transform scale-100">
                         <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">书签</h3>
-                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+                             @dragover.prevent="handleDragOver($event, 'bookmark')"
+                             @drop="handleDrop($event, 'bookmark')">
                             <template x-for="bookmark in currentBookmarks" :key="bookmark.id">
-                                <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border border-gray-100 dark:border-gray-700 transition-all">
+                                <div class="group relative bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm hover:shadow-md border-2 border-gray-100 dark:border-gray-700 transition-all duration-200 cursor-move bookmark-item"
+                                     :draggable="currentView === 'home' && !searchQuery"
+                                     @dragstart="handleDragStart($event, bookmark, 'bookmark')"
+                                     @dragend="handleDragEnd($event)"
+                                     :class="{
+                                        'opacity-40 scale-95 shadow-lg': draggedItem?.type === 'bookmark' && draggedItem?.id === bookmark.id,
+                                        'border-blue-500 shadow-lg shadow-blue-500/20 bg-blue-50 dark:bg-blue-900/20': dropTarget?.type === 'bookmark' && dropTarget?.id === bookmark.id,
+                                        'cursor-grab active:cursor-grabbing': currentView === 'home' && !searchQuery
+                                     }">
                                     <a :href="currentView === 'home' ? bookmark.url : '#'" :target="currentView === 'home' ? '_blank' : ''" class="flex items-start space-x-3">
-                                        <div class="flex-shrink-0 w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 font-bold text-lg uppercase">
+                                        <div class="flex-shrink-0 w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center text-gray-500 dark:text-gray-400 font-bold text-lg uppercase pointer-events-none">
                                             <img :src="'https://www.google.com/s2/favicons?sz=64&domain=' + bookmark.url" class="w-6 h-6" @error="$el.style.display='none'" />
                                             <span x-show="!$el.previousElementSibling || $el.previousElementSibling.style.display === 'none'" x-text="bookmark.title.charAt(0)"></span>
                                         </div>
-                                        <div class="flex-1 min-w-0 pr-16">
+                                        <div class="flex-1 min-w-0 pr-16 pointer-events-none">
                                             <h3 class="text-sm font-medium text-gray-900 dark:text-gray-200 truncate" x-text="bookmark.title"></h3>
                                             <p class="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5" x-text="bookmark.url"></p>
                                         </div>
                                     </a>
-                                    
+
                                     <!-- Home View Actions -->
                                     <div x-show="currentView === 'home'" class="absolute top-3 right-3 flex space-x-1 opacity-0 group-hover:opacity-100 transition-all">
                                         <button @click.prevent="openBookmarkModal(bookmark)" class="p-1.5 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-full" title="编辑">
@@ -246,7 +278,7 @@ export const main = `
         </div>
 
         <!-- Toast Notification -->
-        <div x-show="toast.show" 
+        <div x-show="toast.show"
              x-transition:enter="transition ease-out duration-300"
              x-transition:enter-start="opacity-0 transform translate-y-2"
              x-transition:enter-end="opacity-100 transform translate-y-0"
@@ -258,6 +290,27 @@ export const main = `
                 <svg x-show="toast.type === 'success'" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                 <svg x-show="toast.type === 'error'" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 <span x-text="toast.message" class="font-medium"></span>
+            </div>
+        </div>
+
+        <!-- Enhanced Loading Overlay -->
+        <div x-show="isLoading"
+             x-transition:enter="transition ease-out duration-200"
+             x-transition:enter-start="opacity-0"
+             x-transition:enter-end="opacity-100"
+             x-transition:leave="transition ease-in duration-200"
+             x-transition:leave-start="opacity-100"
+             x-transition:leave-end="opacity-0"
+             class="fixed inset-0 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm z-50 flex items-center justify-center"
+             x-cloak>
+            <div class="text-center">
+                <!-- Spinning Loader -->
+                <div class="relative w-20 h-20 mx-auto mb-4">
+                    <div class="absolute inset-0 border-4 border-blue-200 dark:border-blue-900 rounded-full"></div>
+                    <div class="absolute inset-0 border-4 border-transparent border-t-blue-500 rounded-full animate-spin"></div>
+                    <div class="absolute inset-2 border-4 border-transparent border-t-purple-500 rounded-full animate-spin" style="animation-duration: 1.5s; animation-direction: reverse;"></div>
+                </div>
+                <p class="text-gray-600 dark:text-gray-400 font-medium" x-text="loadingText || '加载中...'"></p>
             </div>
         </div>
     </div>

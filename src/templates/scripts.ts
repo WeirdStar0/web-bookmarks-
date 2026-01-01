@@ -16,8 +16,9 @@ export const scripts = `
                 trashFolders: [],
                 trashBookmarks: [],
                 expandedFolders: {}, // For sidebar tree
-                
+
                 isLoading: false,
+                loadingText: '',
                 isOperationPending: false,
                 toast: { show: false, message: '', type: 'success' },
                 
@@ -41,13 +42,17 @@ export const scripts = `
                 showConfirmModal: false,
                 confirmMessage: '',
                 confirmCallback: null,
-                
+
                 darkMode: localStorage.getItem('darkMode') === 'true',
+
+                // 拖拽状态
+                draggedItem: null, // { id, type, data }
+                dropTarget: null, // { id, type }
 
                 init() {
                     if (this.darkMode) document.documentElement.classList.add('dark');
                     this.checkAuth();
-                    
+
                     this.$watch('currentFolderId', value => localStorage.setItem('currentFolderId', JSON.stringify(value)));
                     this.$watch('currentView', value => localStorage.setItem('currentView', value));
                 },
@@ -74,25 +79,27 @@ export const scripts = `
                 },
 
                 async login() {
-                    await this.withLoading(async () => {
-                        try {
-                            const res = await fetch('/api/login', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify(this.loginForm)
-                            });
-                            if (res.ok) {
-                                this.loggedIn = true;
-                                this.loginError = '';
-                                this.loadData();
-                            } else {
-                                const data = await res.json();
-                                this.loginError = data.error || 'Login failed';
-                            }
-                        } catch (e) {
-                            this.loginError = 'Network error';
+                    this.isLoading = true;
+                    this.loadingText = '登录中...';
+                    try {
+                        const res = await fetch('/api/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(this.loginForm)
+                        });
+                        if (res.ok) {
+                            this.loggedIn = true;
+                            this.loginError = '';
+                            await this.loadData();
+                        } else {
+                            const data = await res.json();
+                            this.loginError = data.error || 'Login failed';
                         }
-                    });
+                    } catch (e) {
+                        this.loginError = 'Network error';
+                    } finally {
+                        this.isLoading = false;
+                    }
                 },
 
                 async logout() {
@@ -206,13 +213,15 @@ export const scripts = `
                         const isSelected = this.currentFolderId === folder.id;
                         const hasChildren = this.folders.some(f => f.parent_id === folder.id);
                         const paddingLeft = level * 16 + 8;
-                        
+
                         const selectedClass = isSelected ? 'bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700';
                         const expandedClass = isExpanded ? 'rotate-90' : '';
                         const invisibleClass = !hasChildren ? 'invisible' : '';
-                        
-                        let html = '<div class="select-none">';
-                        html += '<div class="w-full flex items-center py-1.5 rounded-md text-sm transition-colors ' + selectedClass + '" style="padding-left: ' + paddingLeft + 'px">';
+
+                        let html = '<div class="select-none sidebar-folder-item" data-folder-id="' + folder.id + '">';
+                        html += '<div class="w-full flex items-center py-1.5 rounded-md text-sm transition-all duration-200 ' + selectedClass + '" ';
+                        html += 'style="padding-left: ' + paddingLeft + 'px">';
+
                         html += '<div class="p-1 mr-0.5 cursor-pointer text-gray-400 transform transition-transform ' + expandedClass + ' ' + invisibleClass + '" data-action="toggle" data-id="' + folder.id + '">';
                         html += '<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>';
                         html += '</div>';
@@ -483,7 +492,7 @@ export const scripts = `
                             e.returnValue = '';
                         };
                         window.addEventListener('beforeunload', preventUnload);
-                        
+
                         await this.withLoading(async () => {
                             try {
                                 const text = await file.text();
@@ -491,7 +500,7 @@ export const scripts = `
                                     method: 'POST',
                                     body: text
                                 });
-                                
+
                                 if (res.ok) {
                                     this.showToast('导入成功', 'success');
                                     this.loadData();
@@ -507,6 +516,254 @@ export const scripts = `
                                 event.target.value = '';
                             }
                         });
+                    });
+                },
+
+                // ========== 拖拽功能 ==========
+
+                handleDragStart(event, item, type) {
+                    this.draggedItem = {
+                        id: item.id,
+                        type: type,
+                        data: item
+                    };
+                    // 设置拖拽数据
+                    event.dataTransfer.effectAllowed = 'move';
+                    event.dataTransfer.setData('text/plain', JSON.stringify({ id: item.id, type }));
+
+                    // 延迟添加样式,让拖拽幻影显示
+                    setTimeout(() => {
+                        event.target.style.opacity = '0.5';
+                    }, 0);
+                },
+
+                handleDragEnd(event) {
+                    // 清除拖拽状态
+                    this.draggedItem = null;
+                    this.dropTarget = null;
+
+                    // 恢复元素样式
+                    if (event.target) {
+                        event.target.style.opacity = '1';
+                    }
+                },
+
+                handleDragOver(event, type) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = 'move';
+                },
+
+                async handleDrop(event, targetType) {
+                    event.preventDefault();
+
+                    if (!this.draggedItem) return;
+
+                    // 获取放置目标
+                    const className = targetType + '-item';
+                    const targetElement = event.target.closest('.' + className);
+                    if (!targetElement) {
+                        this.draggedItem = null;
+                        return;
+                    }
+
+                    // 从当前列表中找到目标项
+                    const currentList = targetType === 'folder' ? this.currentFolders : this.currentBookmarks;
+                    const allElements = Array.from(document.querySelectorAll('.' + className));
+                    const targetIndex = allElements.indexOf(targetElement);
+
+                    if (targetIndex === -1 || !currentList[targetIndex]) {
+                        console.error('无法找到目标项:', { targetIndex, currentList });
+                        this.draggedItem = null;
+                        this.dropTarget = null;
+                        return;
+                    }
+
+                    const targetItem = currentList[targetIndex];
+
+                    if (!targetItem || this.draggedItem.id === targetItem.id) {
+                        this.draggedItem = null;
+                        this.dropTarget = null;
+                        return;
+                    }
+
+                    console.log('拖拽操作:', {
+                        draggedItem: this.draggedItem,
+                        targetItem: targetItem,
+                        targetType: targetType
+                    });
+
+                    // 执行拖拽操作
+                    try {
+                        if (this.draggedItem.type === 'folder' && targetType === 'folder') {
+                            await this.reorderFolders(this.draggedItem.id, targetItem.id);
+                        } else if (this.draggedItem.type === 'bookmark' && targetType === 'bookmark') {
+                            await this.reorderBookmarks(this.draggedItem.id, targetItem.id);
+                        } else if (this.draggedItem.type === 'bookmark' && targetType === 'folder') {
+                            // 将书签移动到文件夹
+                            await this.moveBookmarkToFolder(this.draggedItem.id, targetItem.id);
+                        }
+                    } catch (e) {
+                        console.error('拖拽操作失败:', e);
+                        this.showToast('操作失败: ' + e.message, 'error');
+                    }
+
+                    // 清除拖拽状态
+                    this.draggedItem = null;
+                    this.dropTarget = null;
+                },
+
+                // 重新排序文件夹
+                async reorderFolders(draggedId, targetId) {
+                    await this.withLoading(async () => {
+                        try {
+                            console.log('重新排序文件夹:', { draggedId, targetId, currentFolderId: this.currentFolderId });
+
+                            // 获取当前文件夹列表
+                            const currentFolders = this.folders.filter(f => f.parent_id === this.currentFolderId && !f.is_deleted);
+                            console.log('当前文件夹列表:', currentFolders);
+
+                            // 找到拖拽项和目标项的索引
+                            const draggedIndex = currentFolders.findIndex(f => f.id === draggedId);
+                            const targetIndex = currentFolders.findIndex(f => f.id === targetId);
+
+                            if (draggedIndex === -1 || targetIndex === -1) {
+                                console.error('找不到拖拽项或目标项:', { draggedIndex, targetIndex });
+                                this.showToast('排序失败: 找不到项目', 'error');
+                                return;
+                            }
+
+                            // 创建新顺序
+                            const newOrder = [...currentFolders];
+                            newOrder.splice(draggedIndex, 1);
+                            newOrder.splice(targetIndex, 0, currentFolders[draggedIndex]);
+
+                            // 提取 ID 数组
+                            const orderedIds = newOrder.map(f => f.id);
+                            console.log('新顺序 ID:', orderedIds);
+
+                            // 发送到服务器
+                            const res = await fetch('/api/folders/reorder', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ orderedIds })
+                            });
+
+                            const result = await res.json();
+                            console.log('服务器响应:', result);
+
+                            if (res.ok) {
+                                this.showToast('排序已更新', 'success');
+                                await this.loadData();
+                            } else {
+                                console.error('服务器错误:', result);
+                                this.showToast('排序更新失败: ' + (result.error || '未知错误'), 'error');
+                            }
+                        } catch (e) {
+                            console.error('排序异常:', e);
+                            this.showToast('操作失败: ' + e.message, 'error');
+                        }
+                    });
+                },
+
+                // 重新排序书签
+                async reorderBookmarks(draggedId, targetId) {
+                    await this.withLoading(async () => {
+                        try {
+                            console.log('重新排序书签:', { draggedId, targetId, currentFolderId: this.currentFolderId });
+
+                            // 获取当前文件夹的书签列表
+                            const currentBookmarks = this.bookmarks.filter(b =>
+                                b.folder_id === this.currentFolderId && !b.is_deleted
+                            );
+                            console.log('当前书签列表:', currentBookmarks);
+
+                            // 找到拖拽项和目标项的索引
+                            const draggedIndex = currentBookmarks.findIndex(b => b.id === draggedId);
+                            const targetIndex = currentBookmarks.findIndex(b => b.id === targetId);
+
+                            if (draggedIndex === -1 || targetIndex === -1) {
+                                console.error('找不到拖拽项或目标项:', { draggedIndex, targetIndex });
+                                this.showToast('排序失败: 找不到项目', 'error');
+                                return;
+                            }
+
+                            // 创建新顺序
+                            const newOrder = [...currentBookmarks];
+                            newOrder.splice(draggedIndex, 1);
+                            newOrder.splice(targetIndex, 0, currentBookmarks[draggedIndex]);
+
+                            // 提取 ID 数组,确保是数字类型
+                            const orderedIds = newOrder.map(b => {
+                                const id = parseInt(b.id);
+                                console.log('书签 ID:', b.id, '类型:', typeof b.id, '解析后:', id, 'isNaN:', isNaN(id));
+                                return id;
+                            });
+
+                            // 验证所有 ID 都是有效数字
+                            const invalidId = orderedIds.find(id => isNaN(id) || id <= 0);
+                            if (invalidId !== undefined) {
+                                console.error('发现无效 ID:', invalidId);
+                                this.showToast('排序失败: 包含无效的 ID', 'error');
+                                return;
+                            }
+
+                            console.log('新顺序 ID (数字):', orderedIds, '类型:', typeof orderedIds[0]);
+                            console.log('ID 数组长度:', orderedIds.length);
+
+                            const requestBody = JSON.stringify({ orderedIds });
+                            console.log('请求体:', requestBody);
+
+                            // 发送到服务器
+                            const res = await fetch('/api/bookmarks/reorder', {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: requestBody
+                            });
+
+                            const result = await res.json();
+                            console.log('服务器响应:', result);
+
+                            if (res.ok) {
+                                this.showToast('排序已更新', 'success');
+                                await this.loadData();
+                            } else {
+                                console.error('服务器错误:', result);
+                                this.showToast('排序更新失败: ' + (result.error || '未知错误'), 'error');
+                            }
+                        } catch (e) {
+                            console.error('排序异常:', e);
+                            this.showToast('操作失败: ' + e.message, 'error');
+                        }
+                    });
+                },
+
+                // 移动书签到文件夹
+                async moveBookmarkToFolder(bookmarkId, folderId) {
+                    await this.withLoading(async () => {
+                        try {
+                            const bookmark = this.bookmarks.find(b => b.id === bookmarkId);
+                            if (!bookmark) return;
+
+                            const url = '/api/bookmarks/' + bookmarkId;
+                            const res = await fetch(url, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    title: bookmark.title,
+                                    url: bookmark.url,
+                                    folder_id: folderId
+                                })
+                            });
+
+                            if (res.ok) {
+                                this.showToast('已移动到文件夹', 'success');
+                                await this.loadData();
+                            } else {
+                                this.showToast('移动失败', 'error');
+                            }
+                        } catch (e) {
+                            this.showToast('操作失败: ' + e.message, 'error');
+                        }
                     });
                 },
             }

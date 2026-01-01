@@ -1,12 +1,26 @@
 import { Hono } from 'hono';
 import { getSignedCookie, setSignedCookie, deleteCookie, getCookie } from 'hono/cookie';
 import { html } from './html';
+import * as v from './utils/validators';
 
 type Bindings = {
     DB: D1Database;
+    RATE_LIMIT_KV?: KVNamespace;
+    SECRET_KEY?: string;
+    SESSION_MAX_AGE?: string;
+    RATE_LIMIT_MAX?: string;
+    RATE_LIMIT_WINDOW?: string;
 };
 
-const SECRET_KEY = 'secret-key-replace-me-in-production'; // TODO: Use env var
+// 获取配置值,提供合理的默认值
+function getConfig(env: Bindings) {
+    return {
+        secretKey: env.SECRET_KEY || 'dev-secret-key-change-in-production',
+        sessionMaxAge: parseInt(env.SESSION_MAX_AGE || '604800'), // 7天
+        rateLimitMax: parseInt(env.RATE_LIMIT_MAX || '100'),
+        rateLimitWindow: parseInt(env.RATE_LIMIT_WINDOW || '60')
+    };
+}
 
 // Helper: SHA-256 Hash
 async function hashPassword(password: string): Promise<string> {
@@ -19,8 +33,69 @@ async function hashPassword(password: string): Promise<string> {
 
 const app = new Hono<{ Bindings: Bindings }>();
 
+// 速率限制中间件(仅对 API 路由生效)
+app.use('/api/*', async (c, next) => {
+    const config = getConfig(c.env);
+
+    // 如果没有 KV 绑定,跳过速率限制
+    if (!c.env.RATE_LIMIT_KV) {
+        return next();
+    }
+
+    const ip = c.req.header('cf-connecting-ip') ||
+               c.req.header('x-forwarded-for')?.split(',')[0] ||
+               'unknown';
+
+    const key = `ratelimit:${ip}`;
+    const now = Date.now();
+    const windowMs = config.rateLimitWindow * 1000;
+
+    try {
+        const data = await c.env.RATE_LIMIT_KV.get(key, 'json') as { count: number; resetTime: number } | null;
+
+        if (!data || data.resetTime < now) {
+            // 创建新的限制窗口
+            await c.env.RATE_LIMIT_KV.put(key, JSON.stringify({
+                count: 1,
+                resetTime: now + windowMs
+            }), { expirationTtl: config.rateLimitWindow });
+
+            c.header('X-RateLimit-Limit', config.rateLimitMax.toString());
+            c.header('X-RateLimit-Remaining', (config.rateLimitMax - 1).toString());
+
+            return next();
+        }
+
+        if (data.count >= config.rateLimitMax) {
+            const retryAfter = Math.ceil((data.resetTime - now) / 1000);
+            c.header('Retry-After', retryAfter.toString());
+            return c.json({
+                error: 'Too Many Requests',
+                message: '请求过于频繁,请稍后再试',
+                retryAfter
+            }, 429);
+        }
+
+        data.count += 1;
+        await c.env.RATE_LIMIT_KV.put(key, JSON.stringify(data), {
+            expirationTtl: config.rateLimitWindow
+        });
+
+        c.header('X-RateLimit-Limit', config.rateLimitMax.toString());
+        c.header('X-RateLimit-Remaining', (config.rateLimitMax - data.count).toString());
+
+        return next();
+    } catch (error) {
+        // KV 操作失败时降级,允许请求通过
+        console.error('Rate limit check failed:', error);
+        return next();
+    }
+});
+
 // Middleware: Auth & Init
 app.use('*', async (c, next) => {
+    const config = getConfig(c.env);
+
     // Init default settings if not exists
     try {
         const { results } = await c.env.DB.prepare('SELECT * FROM settings WHERE key = ?').bind('username').all();
@@ -45,7 +120,7 @@ app.use('*', async (c, next) => {
     }
 
     // Check Auth - Signed Cookie
-    const cookie = await getSignedCookie(c, SECRET_KEY, 'auth');
+    const cookie = await getSignedCookie(c, config.secretKey, 'auth');
     if (!cookie) {
         if (c.req.path.startsWith('/api/')) {
             return c.json({ error: 'Unauthorized' }, 401);
@@ -66,7 +141,20 @@ app.get('/', (c) => c.html(html));
 
 // API: Login
 app.post('/api/login', async (c) => {
+    const config = getConfig(c.env);
     const { username, password } = await c.req.json();
+
+    // 输入验证
+    const usernameValidation = v.validateUsername(username);
+    if (!usernameValidation.valid) {
+        return c.json({ error: usernameValidation.error }, 400);
+    }
+
+    const passwordValidation = v.validatePassword(password);
+    if (!passwordValidation.valid) {
+        return c.json({ error: passwordValidation.error }, 400);
+    }
+
     const { results } = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('username').all();
     const dbUser = results[0]?.value;
     const { results: passResults } = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('password').all();
@@ -77,7 +165,12 @@ app.post('/api/login', async (c) => {
     if (username === dbUser) {
         // 1. Check Hash
         if (inputHash === dbPass) {
-            await setSignedCookie(c, 'auth', 'true', SECRET_KEY, { httpOnly: true, secure: true, sameSite: 'Strict', maxAge: 86400 * 7 });
+            await setSignedCookie(c, 'auth', 'true', config.secretKey, {
+                httpOnly: true,
+                secure: true,
+                sameSite: 'Strict',
+                maxAge: config.sessionMaxAge
+            });
             return c.json({ success: true });
         }
 
@@ -85,7 +178,12 @@ app.post('/api/login', async (c) => {
         if (password === dbPass) {
             // Match found with plaintext! Update DB to hash immediately.
             await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(inputHash, 'password').run();
-            await setSignedCookie(c, 'auth', 'true', SECRET_KEY, { httpOnly: true, secure: true, sameSite: 'Strict', maxAge: 86400 * 7 });
+            await setSignedCookie(c, 'auth', 'true', config.secretKey, {
+                httpOnly: true,
+                secure: true,
+                sameSite: 'Strict',
+                maxAge: config.sessionMaxAge
+            });
             return c.json({ success: true });
         }
     }
@@ -101,28 +199,70 @@ app.post('/api/logout', async (c) => {
 // API: Update Settings
 app.put('/api/settings', async (c) => {
     const { username, password } = await c.req.json();
-    if (username) await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(username, 'username').run();
+
+    if (username) {
+        const validation = v.validateUsername(username);
+        if (!validation.valid) {
+            return c.json({ error: validation.error }, 400);
+        }
+        await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(username, 'username').run();
+    }
+
     if (password) {
+        const validation = v.validatePassword(password);
+        if (!validation.valid) {
+            return c.json({ error: validation.error }, 400);
+        }
         const passHash = await hashPassword(password);
         await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(passHash, 'password').run();
     }
+
     return c.json({ success: true });
 });
 
 // API: Get all data (Protected)
 app.get('/api/data', async (c) => {
-    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    const config = getConfig(c.env);
+    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 0 ORDER BY sort_order ASC, name ASC').all();
-    const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 0 ORDER BY created_at DESC').all();
+    const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 0 ORDER BY created_at ASC').all();
     return c.json({ folders, bookmarks });
 });
 
 // API: Create Folder
 app.post('/api/folders', async (c) => {
     const { name, parent_id } = await c.req.json();
+
+    // 输入验证
+    const nameValidation = v.validateFolderName(name);
+    if (!nameValidation.valid) {
+        return c.json({ error: nameValidation.error }, 400);
+    }
+
+    // 验证 parent_id (如果提供)
+    let parentId = null;
+    if (parent_id !== null && parent_id !== undefined) {
+        const idValidation = v.validateId(parent_id);
+        if (!idValidation.valid) {
+            return c.json({ error: idValidation.error }, 400);
+        }
+        parentId = idValidation.parsed;
+    }
+
     await c.env.DB.prepare('INSERT INTO folders (name, parent_id) VALUES (?, ?)')
-        .bind(name, parent_id || null)
+        .bind(nameValidation.valid ? v.sanitizeString(name, 255) : name, parentId)
         .run();
+
+    return c.json({ success: true });
+});
+
+// API: Reorder Folders (must come before :id route)
+app.put('/api/folders/reorder', async (c) => {
+    const { orderedIds } = await c.req.json();
+    const batch = orderedIds.map((id: number, index: number) => {
+        return c.env.DB.prepare('UPDATE folders SET sort_order = ? WHERE id = ?').bind(index, id);
+    });
+    await c.env.DB.batch(batch);
     return c.json({ success: true });
 });
 
@@ -131,27 +271,33 @@ app.put('/api/folders/:id', async (c) => {
     const id = c.req.param('id');
     const { name, parent_id } = await c.req.json();
 
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
+    }
+
+    // 验证名称
+    if (name) {
+        const nameValidation = v.validateFolderName(name);
+        if (!nameValidation.valid) {
+            return c.json({ error: nameValidation.error }, 400);
+        }
+    }
+
     // Validate: Cannot set parent to itself (basic check, full cycle check is harder in SQL but UI should prevent it)
-    if (parent_id && parseInt(id) === parseInt(parent_id)) {
+    if (parent_id && idValidation.parsed === parseInt(parent_id.toString())) {
         return c.json({ error: 'Cannot move folder into itself' }, 400);
     }
 
     if (parent_id !== undefined) {
-        await c.env.DB.prepare('UPDATE folders SET name = ?, parent_id = ? WHERE id = ?').bind(name, parent_id, id).run();
+        await c.env.DB.prepare('UPDATE folders SET name = ?, parent_id = ? WHERE id = ?')
+            .bind(v.sanitizeString(name, 255), parent_id, idValidation.parsed).run();
     } else {
-        await c.env.DB.prepare('UPDATE folders SET name = ? WHERE id = ?').bind(name, id).run();
+        await c.env.DB.prepare('UPDATE folders SET name = ? WHERE id = ?')
+            .bind(v.sanitizeString(name, 255), idValidation.parsed).run();
     }
 
-    return c.json({ success: true });
-});
-
-// API: Reorder Folders
-app.put('/api/folders/reorder', async (c) => {
-    const { orderedIds } = await c.req.json();
-    const batch = orderedIds.map((id: number, index: number) => {
-        return c.env.DB.prepare('UPDATE folders SET sort_order = ? WHERE id = ?').bind(index, id);
-    });
-    await c.env.DB.batch(batch);
     return c.json({ success: true });
 });
 
@@ -175,17 +321,91 @@ async function softDeleteFolder(db: D1Database, folderId: number | string) {
 // API: Delete Folder
 app.delete('/api/folders/:id', async (c) => {
     const id = c.req.param('id');
-    await softDeleteFolder(c.env.DB, id);
+
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
+    }
+
+    await softDeleteFolder(c.env.DB, idValidation.parsed);
     return c.json({ success: true });
 });
 
 // API: Create Bookmark
 app.post('/api/bookmarks', async (c) => {
     const { title, url, folder_id } = await c.req.json();
+
+    // 输入验证
+    const titleValidation = v.validateBookmarkTitle(title);
+    if (!titleValidation.valid) {
+        return c.json({ error: titleValidation.error }, 400);
+    }
+
+    const urlValidation = v.validateUrl(url);
+    if (!urlValidation.valid) {
+        return c.json({ error: urlValidation.error }, 400);
+    }
+
+    // 验证 folder_id (如果提供)
+    let folderId = null;
+    if (folder_id !== null && folder_id !== undefined) {
+        const idValidation = v.validateId(folder_id);
+        if (!idValidation.valid) {
+            return c.json({ error: idValidation.error }, 400);
+        }
+        folderId = idValidation.parsed;
+    }
+
     await c.env.DB.prepare('INSERT INTO bookmarks (title, url, folder_id) VALUES (?, ?, ?)')
-        .bind(title, url, folder_id || null)
+        .bind(v.sanitizeString(title, 500), urlValidation.sanitized, folderId)
         .run();
+
     return c.json({ success: true });
+});
+
+// API: Reorder Bookmarks (must come before :id route)
+app.put('/api/bookmarks/reorder', async (c) => {
+    try {
+        const { orderedIds } = await c.req.json();
+
+    if (!Array.isArray(orderedIds)) {
+        return c.json({ error: 'Invalid input: orderedIds must be an array' }, 400);
+    }
+
+    if (orderedIds.length === 0) {
+        return c.json({ error: 'Invalid input: orderedIds is empty' }, 400);
+    }
+
+    // 验证所有 ID
+    for (let i = 0; i < orderedIds.length; i++) {
+        const id = orderedIds[i];
+        const idValidation = v.validateId(id);
+        if (!idValidation.valid) {
+            return c.json({ error: idValidation.error }, 400);
+        }
+    }
+
+    // 获取当前时间作为基准
+    const now = Date.now();
+
+    // 批量更新时间戳以实现排序
+    const batch = orderedIds.map((id: number, index: number) => {
+        // 每个书签的时间戳间隔 1 秒,保持顺序
+        const timestamp = new Date(now - (orderedIds.length - index) * 1000).toISOString();
+        return c.env.DB.prepare('UPDATE bookmarks SET created_at = ? WHERE id = ?')
+            .bind(timestamp, id);
+    });
+
+    try {
+        await c.env.DB.batch(batch);
+        return c.json({ success: true });
+    } catch (error) {
+        return c.json({ error: 'Database error: ' + error.message }, 500);
+    }
+    } catch (error) {
+        return c.json({ error: 'Request processing error: ' + error.message }, 400);
+    }
 });
 
 // API: Update Bookmark
@@ -193,18 +413,52 @@ app.put('/api/bookmarks/:id', async (c) => {
     const id = c.req.param('id');
     const { title, url, folder_id } = await c.req.json();
 
-    if (folder_id !== undefined) {
-        await c.env.DB.prepare('UPDATE bookmarks SET title = ?, url = ?, folder_id = ? WHERE id = ?').bind(title, url, folder_id, id).run();
-    } else {
-        await c.env.DB.prepare('UPDATE bookmarks SET title = ?, url = ? WHERE id = ?').bind(title, url, id).run();
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
     }
+
+    // 验证标题
+    if (title) {
+        const titleValidation = v.validateBookmarkTitle(title);
+        if (!titleValidation.valid) {
+            return c.json({ error: titleValidation.error }, 400);
+        }
+    }
+
+    // 验证 URL
+    let sanitizedUrl = undefined;
+    if (url) {
+        const urlValidation = v.validateUrl(url);
+        if (!urlValidation.valid) {
+            return c.json({ error: urlValidation.error }, 400);
+        }
+        sanitizedUrl = urlValidation.sanitized;
+    }
+
+    if (folder_id !== undefined) {
+        await c.env.DB.prepare('UPDATE bookmarks SET title = ?, url = ?, folder_id = ? WHERE id = ?')
+            .bind(v.sanitizeString(title, 500), sanitizedUrl, folder_id, idValidation.parsed).run();
+    } else {
+        await c.env.DB.prepare('UPDATE bookmarks SET title = ?, url = ? WHERE id = ?')
+            .bind(v.sanitizeString(title, 500), sanitizedUrl, idValidation.parsed).run();
+    }
+
     return c.json({ success: true });
 });
 
 // API: Delete Bookmark
 app.delete('/api/bookmarks/:id', async (c) => {
     const id = c.req.param('id');
-    await c.env.DB.prepare('UPDATE bookmarks SET is_deleted = 1 WHERE id = ?').bind(id).run();
+
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
+    }
+
+    await c.env.DB.prepare('UPDATE bookmarks SET is_deleted = 1 WHERE id = ?').bind(idValidation.parsed).run();
     return c.json({ success: true });
 });
 
@@ -234,7 +488,8 @@ function generateNetscapeHTML(folders: any[], bookmarks: any[], parentId: number
 
 // API: Get Trash
 app.get('/api/trash', async (c) => {
-    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    const config = getConfig(c.env);
+    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 1 ORDER BY name').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 1 ORDER BY created_at DESC').all();
     return c.json({ folders, bookmarks });
@@ -243,28 +498,56 @@ app.get('/api/trash', async (c) => {
 // API: Restore Folder
 app.post('/api/restore/folders/:id', async (c) => {
     const id = c.req.param('id');
-    await c.env.DB.prepare('UPDATE folders SET is_deleted = 0 WHERE id = ?').bind(id).run();
+
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
+    }
+
+    await c.env.DB.prepare('UPDATE folders SET is_deleted = 0 WHERE id = ?').bind(idValidation.parsed).run();
     return c.json({ success: true });
 });
 
 // API: Restore Bookmark
 app.post('/api/restore/bookmarks/:id', async (c) => {
     const id = c.req.param('id');
-    await c.env.DB.prepare('UPDATE bookmarks SET is_deleted = 0 WHERE id = ?').bind(id).run();
+
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
+    }
+
+    await c.env.DB.prepare('UPDATE bookmarks SET is_deleted = 0 WHERE id = ?').bind(idValidation.parsed).run();
     return c.json({ success: true });
 });
 
 // API: Permanent Delete Folder
 app.delete('/api/trash/folders/:id', async (c) => {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM folders WHERE id = ?').bind(id).run();
+
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
+    }
+
+    await c.env.DB.prepare('DELETE FROM folders WHERE id = ?').bind(idValidation.parsed).run();
     return c.json({ success: true });
 });
 
 // API: Permanent Delete Bookmark
 app.delete('/api/trash/bookmarks/:id', async (c) => {
     const id = c.req.param('id');
-    await c.env.DB.prepare('DELETE FROM bookmarks WHERE id = ?').bind(id).run();
+
+    // 验证 ID
+    const idValidation = v.validateId(id);
+    if (!idValidation.valid) {
+        return c.json({ error: idValidation.error }, 400);
+    }
+
+    await c.env.DB.prepare('DELETE FROM bookmarks WHERE id = ?').bind(idValidation.parsed).run();
     return c.json({ success: true });
 });
 
@@ -279,8 +562,8 @@ app.delete('/api/trash/empty', async (c) => {
 
 // API: Export
 app.get('/api/export', async (c) => {
-    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
-
+    const config = getConfig(c.env);
+    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
 
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks').all();
@@ -303,7 +586,8 @@ app.get('/api/export', async (c) => {
 
 // API: Import
 app.post('/api/import', async (c) => {
-    if (!await getSignedCookie(c, SECRET_KEY, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    const config = getConfig(c.env);
+    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
 
 
     const body = await c.req.text();

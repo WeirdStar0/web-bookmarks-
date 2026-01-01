@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep \"\\\\`\")",
+      "Bash(npm run deploy:*)",
+      "Bash(npx wrangler tail:*)",
+      "Bash(npx wrangler deployments list:*)"
+    ]
+  }
+}

@@ -1,0 +1,17 @@
+# 环境变量配置示例文件
+# 复制此文件为 .dev.vars 并填入实际值
+# .dev.vars 文件不应提交到 Git 仓库
+
+# 密钥用于签名 Cookie
+# 请使用强随机字符串,至少 32 个字符
+# 可以使用以下命令生成: openssl rand -base64 32
+SECRET_KEY=your-secret-key-replace-me-in-production
+
+# 可选:会话过期时间(秒),默认 7 天 (604800)
+# SESSION_MAX_AGE=604800
+
+# 可选:速率限制配置
+# 每个时间窗口内的最大请求数
+# RATE_LIMIT_MAX=100
+# 时间窗口(秒)
+# RATE_LIMIT_WINDOW=60
