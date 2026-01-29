@@ -12,10 +12,13 @@ type Bindings = {
     RATE_LIMIT_WINDOW?: string;
 };
 
+type Variables = {
+    sessionSecret: string;
+};
+
 // 获取配置值,提供合理的默认值
 function getConfig(env: Bindings) {
     return {
-        secretKey: env.SECRET_KEY || 'dev-secret-key-change-in-production',
         sessionMaxAge: parseInt(env.SESSION_MAX_AGE || '604800'), // 7天
         rateLimitMax: parseInt(env.RATE_LIMIT_MAX || '100'),
         rateLimitWindow: parseInt(env.RATE_LIMIT_WINDOW || '60')
@@ -31,7 +34,7 @@ async function hashPassword(password: string): Promise<string> {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-const app = new Hono<{ Bindings: Bindings }>();
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // 速率限制中间件(仅对 API 路由生效)
 app.use('/api/*', async (c, next) => {
@@ -159,8 +162,12 @@ app.use('*', async (c, next) => {
             console.log('SECRET_KEY not found. Generating a new one...');
             const newSecret = Array.from(crypto.getRandomValues(new Uint8Array(32)))
                 .map(b => b.toString(16).padStart(2, '0')).join('');
-            await c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').bind('secret_key', newSecret).run();
-            dynamicSecret = newSecret;
+            // 使用 INSERT OR IGNORE 防止並發初始化衝突
+            await c.env.DB.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)').bind('secret_key', newSecret).run();
+
+            // 再次讀取以確保拿到了正確的（可能是其他請求生成的）密鑰
+            const finalResult = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('secret_key').first();
+            dynamicSecret = (finalResult?.value as string) || newSecret;
         }
     } catch (e) {
         // 忽略,由后续逻辑处理
@@ -171,7 +178,8 @@ app.use('*', async (c, next) => {
         const results = await c.env.DB.prepare('SELECT * FROM settings WHERE key = ?').bind('username').first();
         if (!results) {
             const defaultPassHash = await hashPassword('12345');
-            await c.env.DB.prepare('INSERT INTO settings (key, value) VALUES (?, ?), (?, ?)').bind('username', 'admin', 'password', defaultPassHash).run();
+            // 使用 INSERT OR IGNORE 防止並發衝突
+            await c.env.DB.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?), (?, ?)').bind('username', 'admin', 'password', defaultPassHash).run();
         }
     } catch (e) {
         // 忽略,由步骤1处理
@@ -184,8 +192,9 @@ app.use('*', async (c, next) => {
         // 忽略,说明列已存在
     }
 
-    // 注入动态密钥
+    // 注入動態密鑰到 Context
     const finalSecret = dynamicSecret || 'dev-secret-key-fallback';
+    c.set('sessionSecret', finalSecret);
 
     // Public routes
     if (c.req.path === '/api/login' || (c.req.path === '/' && !getCookie(c, 'auth'))) {
@@ -235,10 +244,12 @@ app.post('/api/login', async (c) => {
 
     const inputHash = await hashPassword(password);
 
+    const secret = c.get('sessionSecret');
+
     if (username === dbUser) {
         // 1. Check Hash
         if (inputHash === dbPass) {
-            await setSignedCookie(c, 'auth', 'true', config.secretKey, {
+            await setSignedCookie(c, 'auth', 'true', secret, {
                 httpOnly: true,
                 secure: true,
                 sameSite: 'Strict',
@@ -251,7 +262,7 @@ app.post('/api/login', async (c) => {
         if (password === dbPass) {
             // Match found with plaintext! Update DB to hash immediately.
             await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(inputHash, 'password').run();
-            await setSignedCookie(c, 'auth', 'true', config.secretKey, {
+            await setSignedCookie(c, 'auth', 'true', secret, {
                 httpOnly: true,
                 secure: true,
                 sameSite: 'Strict',
@@ -296,7 +307,8 @@ app.put('/api/settings', async (c) => {
 // API: Get all data (Protected)
 app.get('/api/data', async (c) => {
     const config = getConfig(c.env);
-    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    const secret = c.get('sessionSecret');
+    if (!await getSignedCookie(c, secret, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 0 ORDER BY sort_order ASC, name ASC').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 0 ORDER BY created_at ASC').all();
     return c.json({ folders, bookmarks });
@@ -401,7 +413,7 @@ app.delete('/api/folders/:id', async (c) => {
         return c.json({ error: idValidation.error }, 400);
     }
 
-    await softDeleteFolder(c.env.DB, idValidation.parsed);
+    await softDeleteFolder(c.env.DB, idValidation.parsed!);
     return c.json({ success: true });
 });
 
@@ -562,7 +574,8 @@ function generateNetscapeHTML(folders: any[], bookmarks: any[], parentId: number
 // API: Get Trash
 app.get('/api/trash', async (c) => {
     const config = getConfig(c.env);
-    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    const secret = c.get('sessionSecret');
+    if (!await getSignedCookie(c, secret, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 1 ORDER BY name').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 1 ORDER BY created_at DESC').all();
     return c.json({ folders, bookmarks });
@@ -635,8 +648,8 @@ app.delete('/api/trash/empty', async (c) => {
 
 // API: Export
 app.get('/api/export', async (c) => {
-    const config = getConfig(c.env);
-    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    const secret = c.get('sessionSecret');
+    if (!await getSignedCookie(c, secret, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
 
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks').all();
@@ -659,8 +672,8 @@ app.get('/api/export', async (c) => {
 
 // API: Import
 app.post('/api/import', async (c) => {
-    const config = getConfig(c.env);
-    if (!await getSignedCookie(c, config.secretKey, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+    const secret = c.get('sessionSecret');
+    if (!await getSignedCookie(c, secret, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
 
 
     const body = await c.req.text();
