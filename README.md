@@ -10,10 +10,11 @@
 - 📤 **导入/导出** - 支持 Netscape HTML 格式的书签导入导出
 - 🔐 **身份验证** - 基于 Cookie 的安全认证系统
 - 🔒 **安全增强** - 输入验证、速率限制、SQL 注入防护
-- 🎯 **拖拽排序** - 拖拽文件夹和书签进行重新排序
-- ⚡ **无服务器架构** - 部署在 Cloudflare Workers,全球边缘网络加速
+- 🎯 **自由排序** - 点击“排序”进入管理模式，拖拽项目进行重新排序
+- ⚡ **无服务器架构** - 部署在 Cloudflare Workers，全球边缘网络加速
 - 💾 **D1 数据库** - 使用 Cloudflare D1 SQLite 数据库存储数据
-- 🎨 **优化体验** - 流畅的加载动画和响应式设计
+- 🚀 **性能卓越** - 侧边栏预计算书签数量，极速响应，即使书签再多也不卡顿
+- 🎨 **暗黑模式** - 完美支持暗黑模式，保护视力
 
 **新增功能**: 拖拽排序! 查看 [DRAG_DROP_GUIDE.md](./DRAG_DROP_GUIDE.md) 了解详情
 
@@ -27,7 +28,7 @@
 
 ## 📋 前置要求
 
-- Node.js 16.x 或更高版本
+- Node.js 20.x 或更高版本 (CI/CD 必须)
 - npm 或 yarn
 - Cloudflare 账号
 - Wrangler CLI (Cloudflare 开发工具)
@@ -203,8 +204,8 @@ npm run deploy
 
 在 GitHub 仓库的 Settings > Secrets and variables > Actions 中添加:
 
-- `CLOUDFLARE_API_TOKEN`: Cloudflare API Token
-- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare Account ID
+- `CLOUDFLARE_API_TOKEN`: Cloudflare API Token ([详情](https://dash.cloudflare.com/profile/api-tokens))
+- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare Account ID (在 Workers 概览页右侧查看)
 
 2. **创建 GitHub Actions 工作流**
 
@@ -257,6 +258,11 @@ SECRET_KEY=your-secret-key
 - `POST /api/restore/bookmarks/:id` - 恢复书签
 - `DELETE /api/trash/bookmarks/:id` - 永久删除书签
 
+### 排序操作 (新增)
+
+- `PUT /api/folders/reorder` - 批量更新文件夹顺序
+- `PUT /api/bookmarks/reorder` - 批量更新书签顺序 (基于时间戳)
+
 ### 导入导出
 
 - `GET /api/export` - 导出书签为 HTML 格式
@@ -271,6 +277,7 @@ SECRET_KEY=your-secret-key
 | id | INTEGER | 主键 |
 | name | TEXT | 文件夹名称 |
 | parent_id | INTEGER | 父文件夹 ID |
+| sort_order | INTEGER | 排序权重 (越小越靠前) |
 | is_deleted | INTEGER | 是否已删除 (0/1) |
 | created_at | TIMESTAMP | 创建时间 |
 
