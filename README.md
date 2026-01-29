@@ -148,7 +148,7 @@ npm run deploy
    ```bash
    npx wrangler login
    npx wrangler d1 create bookmarks-db
-   # 将输出的 database_id 填入 wrangler.toml
+   # 将输出的 database_id 填入 wrangler.toml (必须在 [[d1_databases]] 下填写)
    npm run migrate:remote
    ```
 
@@ -202,18 +202,6 @@ npx wrangler kv:namespace create RATE_LIMIT_KV
 npm run deploy
 ```
 
-#### 方法二: 使用 GitHub Actions 自动部署
-
-1. **设置 GitHub Secrets**
-
-在 GitHub 仓库的 Settings > Secrets and variables > Actions 中添加:
-
-- `CLOUDFLARE_API_TOKEN`: Cloudflare API Token ([详情](https://dash.cloudflare.com/profile/api-tokens))
-- `CLOUDFLARE_ACCOUNT_ID`: Cloudflare Account ID (在 Workers 概览页右侧查看)
-
-2. **自动化部署**
-
-项目已包含 `.github/workflows/deploy.yml`，只要你在 GitHub 仓库中配置好上述 Secret，每次推送到 `main` 分支时都会自动部署。
 
 ---
 

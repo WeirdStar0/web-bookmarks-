@@ -1,4 +1,6 @@
 import { Hono } from 'hono';
+import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
 import { getSignedCookie, setSignedCookie, deleteCookie, getCookie } from 'hono/cookie';
 import { html } from './html';
 import * as v from './utils/validators';
@@ -15,6 +17,26 @@ type Bindings = {
 type Variables = {
     sessionSecret: string;
 };
+
+// 熱點數據緩存
+let cachedSettings: Record<string, string> | null = null;
+let lastCacheUpdate = 0;
+const CACHE_TTL = 30000; // 30秒
+
+async function getSettings(db: D1Database): Promise<Record<string, string>> {
+    const now = Date.now();
+    if (cachedSettings && (now - lastCacheUpdate < CACHE_TTL)) {
+        return cachedSettings;
+    }
+    const { results } = await db.prepare('SELECT key, value FROM settings').all();
+    const settings: Record<string, string> = {};
+    results.forEach(r => {
+        settings[r.key as string] = r.value as string;
+    });
+    cachedSettings = settings;
+    lastCacheUpdate = now;
+    return settings;
+}
 
 // 获取配置值,提供合理的默认值
 function getConfig(env: Bindings) {
@@ -36,8 +58,36 @@ async function hashPassword(password: string): Promise<string> {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+app.use('*', logger());
+app.use('*', secureHeaders());
+
+// 全局错误处理
+app.onError((err, c) => {
+    console.error(`[Global Error]: ${err.stack || err.message}`);
+
+    // 隐藏 D1/KV 等底层细节,返回友好提示
+    const status = (err as any).status || 500;
+    return c.json({
+        error: 'Internal Server Error',
+        message: '服务器繁忙，请稍后再试'
+    }, status);
+});
+
+app.notFound((c) => {
+    return c.json({ error: 'Not Found', message: '资源不存在' }, 404);
+});
+
 // 速率限制中间件(仅对 API 路由生效)
 app.use('/api/*', async (c, next) => {
+    // 基本的 CSRF 防护: 校验自定义 Header
+    // 所有的 API 请求都应该带有 X-Requested-With 或由 Fetch 发出
+    if (['POST', 'PUT', 'DELETE'].includes(c.req.method)) {
+        const requestedWith = c.req.header('X-Requested-With');
+        if (!requestedWith && !c.req.header('Origin')) {
+            return c.json({ error: 'Security validation failed' }, 403);
+        }
+    }
+
     const config = getConfig(c.env);
 
     // 如果没有 KV 绑定,跳过速率限制
@@ -173,13 +223,14 @@ app.use('*', async (c, next) => {
         // 忽略,由后续逻辑处理
     }
 
-    // 3. 初始化默认管理员配置
+    // 3. 初始化默认管理员配置 (使用 getSettings 同步或初始化)
     try {
-        const results = await c.env.DB.prepare('SELECT * FROM settings WHERE key = ?').bind('username').first();
-        if (!results) {
+        const settings = await getSettings(c.env.DB);
+        if (!settings.username) {
             const defaultPassHash = await hashPassword('12345');
             // 使用 INSERT OR IGNORE 防止並發衝突
             await c.env.DB.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?), (?, ?)').bind('username', 'admin', 'password', defaultPassHash).run();
+            cachedSettings = null; // 清除緩存以觸發下次刷新
         }
     } catch (e) {
         // 忽略,由步骤1处理
@@ -237,10 +288,9 @@ app.post('/api/login', async (c) => {
         return c.json({ error: passwordValidation.error }, 400);
     }
 
-    const { results } = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('username').all();
-    const dbUser = results[0]?.value;
-    const { results: passResults } = await c.env.DB.prepare('SELECT value FROM settings WHERE key = ?').bind('password').all();
-    const dbPass = passResults[0]?.value;
+    const settings = await getSettings(c.env.DB);
+    const dbUser = settings.username;
+    const dbPass = settings.password;
 
     const inputHash = await hashPassword(password);
 
@@ -262,6 +312,7 @@ app.post('/api/login', async (c) => {
         if (password === dbPass) {
             // Match found with plaintext! Update DB to hash immediately.
             await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(inputHash, 'password').run();
+            cachedSettings = null; // 刷新缓存
             await setSignedCookie(c, 'auth', 'true', secret, {
                 httpOnly: true,
                 secure: true,
@@ -301,6 +352,7 @@ app.put('/api/settings', async (c) => {
         await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(passHash, 'password').run();
     }
 
+    cachedSettings = null; // 統一在此處清除緩存
     return c.json({ success: true });
 });
 
@@ -386,21 +438,31 @@ app.put('/api/folders/:id', async (c) => {
     return c.json({ success: true });
 });
 
-// Helper: Recursive Soft Delete
+// Helper:高效循環軟刪除 (避免深度遞歸導致的 D1 限制)
 async function softDeleteFolder(db: D1Database, folderId: number | string) {
-    // 1. Delete bookmarks in this folder
-    await db.prepare('UPDATE bookmarks SET is_deleted = 1 WHERE folder_id = ?').bind(folderId).run();
+    const idsToProcess = [folderId];
+    const allFolderIds = [folderId];
 
-    // 2. Find subfolders
-    const { results: subfolders } = await db.prepare('SELECT id FROM folders WHERE parent_id = ?').bind(folderId).all();
-
-    // 3. Recursively delete subfolders
-    for (const sub of subfolders) {
-        await softDeleteFolder(db, sub.id as number);
+    // 1. 廣度優先搜索所有子文件夾 ID
+    while (idsToProcess.length > 0) {
+        const currentId = idsToProcess.shift();
+        const { results } = await db.prepare('SELECT id FROM folders WHERE parent_id = ? AND is_deleted = 0').bind(currentId).all();
+        for (const row of results) {
+            allFolderIds.push(row.id as number);
+            idsToProcess.push(row.id as number);
+        }
     }
 
-    // 4. Delete the folder itself
-    await db.prepare('UPDATE folders SET is_deleted = 1 WHERE id = ?').bind(folderId).run();
+    // 2. 批量更新書籤與文件夾狀態
+    const batch = [];
+    for (const id of allFolderIds) {
+        batch.push(db.prepare('UPDATE bookmarks SET is_deleted = 1 WHERE folder_id = ?').bind(id));
+        batch.push(db.prepare('UPDATE folders SET is_deleted = 1 WHERE id = ?').bind(id));
+    }
+
+    if (batch.length > 0) {
+        await db.batch(batch);
+    }
 }
 
 // API: Delete Folder

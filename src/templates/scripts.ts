@@ -193,9 +193,9 @@ export const scripts = `
                 },
 
                 get flattenedFolders() {
+                    const escape = (s) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
                     const buildHierarchy = (parentId = null, level = 0) => {
                         const children = this.folders.filter(f => f.parent_id === parentId);
-                        // Sort by sort_order then name (though backend already does this, good to be safe or if we re-sort locally)
                         children.sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
                         
                         let result = [];
@@ -203,7 +203,7 @@ export const scripts = `
                             result.push({
                                 ...child,
                                 level: level,
-                                displayName: '\u00A0'.repeat(level * 4) + child.name
+                                displayName: '\u00A0'.repeat(level * 4) + escape(child.name)
                             });
                             result = result.concat(buildHierarchy(child.id, level + 1));
                         }
