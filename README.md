@@ -2,7 +2,15 @@
 
  一个基于 Cloudflare Workers 和 D1 数据库构建的现代化书签管理系统。
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/target?url=https://github.com/WeirdStar0/web-bookmarks-)
+<p align="center">
+  <img src="docs/images/dashboard-light.png" width="45%" alt="Dashboard Light">
+  <img src="docs/images/dashboard-dark.png" width="45%" alt="Dashboard Dark">
+</p>
+<p align="center">
+  <img src="docs/images/extension-light.png" width="200" alt="Extension Light">
+  <img src="docs/images/extension-dark.png" width="200" alt="Extension Dark">
+</p>
+
 
 ## ✨ 功能特性
 
@@ -28,101 +36,23 @@
 - **前端**: 原生 HTML/CSS/JavaScript + Alpine.js
 - **语言**: TypeScript
 
-## 📋 前置要求
+## 📋 使用前置要求
 
-- Node.js 20.x 或更高版本 (CI/CD 必须)
-- npm 或 yarn
 - Cloudflare 账号
+
+
+## 📋 开发前置要求
+
+- Node.js 20.x 或更高版本
 - Wrangler CLI (Cloudflare 开发工具)
 
-### 🔐 安全与升级
 
-本版本引入了多项安全改进：
-- ✅ 环境变量配置 (不再硬编码密钥)
-- ✅ 请求速率限制 (防止 DDoS 攻击)
-- ✅ 输入验证和 SQL 注入防护
-- ✅ 数据库索引优化
-
-## 🛠️ 本地开发
-
-### 1. 克隆项目
-
-```bash
-git clone https://github.com/YOUR_USERNAME/web-bookmarks.git
-cd web-bookmarks
-```
-
-### 2. 安装依赖
-
-```bash
-npm install
-```
-
-### 3. 创建本地数据库
-
-```bash
-# 创建本地 D1 数据库
-npx wrangler d1 create bookmarks-db
-
-# 复制输出的 database_id 并更新 wrangler.toml 中的 database_id
-```
-
-### 4. 配置环境变量
-
-```bash
-# 复制环境变量模板
-cp .dev.vars.example .dev.vars
-
-# 生成密钥
-openssl rand -base64 32
-
-# 将生成的密钥添加到 .dev.vars 文件
-```
-
-编辑 `.dev.vars`:
-```
-SECRET_KEY=your-generated-secret-key-here
-```
-
-### 5. 初始化数据库表结构
-
-```bash
-# 本地开发环境
-npx wrangler d1 execute bookmarks-db --local --file=./schema.sql
-
-# 应用索引优化(可选但推荐)
-npx wrangler d1 execute bookmarks-db --local --file=./migrations/002_add_indexes.sql
-```
-
-### 6. 启动开发服务器
-
-```bash
-npm run dev
-```
-
-访问 `http://localhost:8787` 即可看到应用。
-
-默认登录凭据:
-- 用户名: `admin`
-- 密码: `12345`
-
-### 🆕 更新现有项目
-
-如果你已经部署过，可以使用以下快速命令更新：
-```bash
-# 1. 设置 SECRET_KEY (首次部署必需)
-npx wrangler secret put SECRET_KEY
-
-# 2. 运行数据库迁移(添加索引优化)
-npm run migrate:remote
-
-# 3. 部署
-npm run deploy
-```
 
 ## 🚀 快速部署
 
 ### 方法一：一键部署 (推荐)
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/target?url=https://github.com/WeirdStar0/web-bookmarks-)
 
 点击上方的 **Deploy to Cloudflare Workers** 按钮。它会自动：
 1. Fork/Clone 本仓库到你的账号。
@@ -158,52 +88,50 @@ npm run deploy
    npm run deploy
    ```
 
-## 🛠️ 本地开发
+## 🛠️ 本地开发 (Local Development)
 
-4. **设置 SECRET_KEY**
+如果你想在本地环境中运行或贡献代码，请参考以下步骤：
 
+### 1. 克隆与安装
 ```bash
-# 生成密钥
+git clone https://github.com/WeirdStar0/web-bookmarks-.git
+cd web-bookmarks-
+npm install
+```
+
+### 2. 配置本地数据库
+```bash
+# 创建本地 D1 数据库实例
+npx wrangler d1 create bookmarks-db
+
+# 运行 SQL 初始化表结构 (本地模式)
+npx wrangler d1 execute bookmarks-db --local --file=./schema.sql
+npx wrangler d1 execute bookmarks-db --local --file=./migrations/002_add_indexes.sql
+```
+
+### 3. 环境变量配置
+创建 `.dev.vars` 文件用于本地存储密钥：
+```bash
+# 生成生成的随机密钥
 openssl rand -base64 32
-
-# 设置密钥
-npx wrangler secret put SECRET_KEY
 ```
+在 `.dev.vars` 中填入：`SECRET_KEY=你的随机密钥`
 
-5. **初始化生产数据库**
-
+### 4. 启动开发服务器
 ```bash
-# 创建表结构
-npx wrangler d1 execute bookmarks-db --remote --file=./schema.sql
-
-# 添加索引优化(推荐)
-npx wrangler d1 execute bookmarks-db --remote --file=./migrations/002_add_indexes.sql
+npm run dev
 ```
-
-6. **部署应用**
-
-```bash
-npm run deploy
-```
-
-部署成功后,Wrangler 会输出你的应用 URL,类似:
-```
-https://web-bookmarks.YOUR_SUBDOMAIN.workers.dev
-```
-
-7. **(可选) 启用速率限制**
-
-```bash
-# 创建 KV 命名空间
-npx wrangler kv:namespace create RATE_LIMIT_KV
-
-# 将输出的配置添加到 wrangler.toml
-# 重新部署
-npm run deploy
-```
-
+访问 `http://localhost:8787`。默认账号：`admin` / 密码：`12345`
 
 ---
+
+## 🔒 进阶配置
+
+### 启用速率限制 (可选)
+为了防止暴力破解，建议启用 KV 存储进行速率限制：
+1. 创建 KV 命名空间：`npx wrangler kv:namespace create RATE_LIMIT_KV`
+2. 将返回的 `id` 填入 `wrangler.toml` 中的 `kv_namespaces` 部分。
+3. 重新运行 `npm run deploy`。
 
 ## 🧩 浏览器扩展 (Browser Extension)
 

@@ -284,22 +284,109 @@ async function loadFolders(lastFolderId) {
 }
 
 function renderFolderSelect(lastFolderId) {
-    folderSelect.innerHTML = '<option value="">选择文件夹...</option>';
-    const buildOptions = (parentId, level = 0) => {
+    const container = document.getElementById('folderTreeContainer');
+    const trigger = document.getElementById('folderSelectTrigger');
+    const hiddenInput = document.getElementById('folderSelect');
+
+    if (!container || !trigger) return; // Guard
+
+    container.innerHTML = '';
+
+    // Toggle Dropdown
+    trigger.onclick = (e) => {
+        e.stopPropagation();
+        container.classList.toggle('hidden');
+    };
+
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+        if (!container.contains(e.target) && !trigger.contains(e.target)) {
+            container.classList.add('hidden');
+        }
+    });
+
+    // Helper to find folder name by ID for initial label
+    const findFolderName = (parentId, targetId) => {
+        const f = folders.find(f => f.id.toString() === targetId.toString());
+        return f ? f.name : '选择文件夹...';
+    }
+
+    if (lastFolderId) {
+        hiddenInput.value = lastFolderId;
+        const name = findFolderName(null, lastFolderId);
+        trigger.innerHTML = `<span class="truncate">${name}</span>`;
+    }
+
+    const buildTree = (parentId, parentEl) => {
         const children = folders.filter(f => f.parent_id === parentId)
             .sort((a, b) => (a.sort_order - b.sort_order) || a.name.localeCompare(b.name));
+
+        if (children.length === 0) return;
+
         children.forEach(folder => {
-            const option = document.createElement('option');
-            option.value = folder.id;
-            option.textContent = '　'.repeat(level) + folder.name;
-            if (lastFolderId && folder.id.toString() === lastFolderId.toString()) {
-                option.selected = true;
+            const hasChildren = folders.some(f => f.parent_id === folder.id);
+
+            // Node Container
+            const nodeDiv = document.createElement('div');
+
+            // 1. The Row
+            const rowDiv = document.createElement('div');
+            rowDiv.className = 'folder-node';
+            if (hiddenInput.value === folder.id.toString()) {
+                rowDiv.classList.add('selected');
             }
-            folderSelect.appendChild(option);
-            buildOptions(folder.id, level + 1);
+
+            // Toggle Arrow
+            const toggleBtn = document.createElement('div');
+            toggleBtn.className = 'folder-toggle';
+            if (!hasChildren) toggleBtn.classList.add('invisible');
+            toggleBtn.innerHTML = `<svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>`;
+
+            // Icon
+            const icon = document.createElement('div');
+            icon.className = 'folder-icon';
+            icon.innerHTML = `<svg fill="currentColor" viewBox="0 0 20 20"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z"></path></svg>`;
+
+            // Name
+            const nameSpan = document.createElement('div');
+            nameSpan.className = 'folder-name';
+            nameSpan.textContent = folder.name;
+
+            rowDiv.appendChild(toggleBtn);
+            rowDiv.appendChild(icon);
+            rowDiv.appendChild(nameSpan);
+
+            nodeDiv.appendChild(rowDiv);
+            parentEl.appendChild(nodeDiv);
+
+            // 2. Children Container
+            if (hasChildren) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'folder-children'; // Default expanded
+
+                nodeDiv.appendChild(childrenContainer);
+                buildTree(folder.id, childrenContainer);
+
+                // Toggle Event
+                toggleBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    childrenContainer.classList.toggle('hidden');
+                    toggleBtn.classList.toggle('collapsed');
+                };
+            }
+
+            // Select Event
+            rowDiv.onclick = (e) => {
+                hiddenInput.value = folder.id;
+                trigger.innerHTML = `<span class="truncate">${folder.name}</span>`;
+                container.classList.add('hidden');
+                document.querySelectorAll('.folder-node').forEach(el => el.classList.remove('selected'));
+                rowDiv.classList.add('selected');
+            };
         });
     };
-    buildOptions(null);
+
+    buildTree(null, container);
 }
 
 function renderSearchResults(bookmarks) {

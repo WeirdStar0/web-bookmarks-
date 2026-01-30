@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { logger } from 'hono/logger';
+import { cors } from 'hono/cors';
 import { secureHeaders } from 'hono/secure-headers';
 import { html } from './html';
 import { Bindings, Variables } from './types';
@@ -11,7 +12,16 @@ import apiRoutes from './routes/api';
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use('*', logger());
-app.use('*', secureHeaders());
+app.use('/api/*', cors({
+    origin: (origin) => origin,
+    credentials: true,
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+}));
+app.use('*', secureHeaders({
+    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: false,
+}));
 
 // Global Error Handler
 app.onError((err, c) => {

@@ -4,6 +4,9 @@ import { Bindings, Variables } from '../types';
 
 export async function authMiddleware(c: Context<{ Bindings: Bindings; Variables: Variables }>, next: Next) {
     const url = new URL(c.req.url);
+    if (c.req.method === 'OPTIONS') {
+        return next();
+    }
 
     // Public paths
     if (url.pathname === '/' || url.pathname === '/api/login' || (!url.pathname.startsWith('/api') && !url.pathname.startsWith('/admin'))) {

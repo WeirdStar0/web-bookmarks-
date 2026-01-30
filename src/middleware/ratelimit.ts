@@ -13,11 +13,17 @@ export async function rateLimitMiddleware(c: Context<{ Bindings: Bindings; Varia
         const referer = c.req.header('referer');
         const host = c.req.header('host');
 
-        if (origin && !origin.includes(host!)) {
-            return c.json({ error: 'Invalid Origin' }, 403);
-        }
-        if (referer && !referer.includes(host!)) {
-            return c.json({ error: 'Invalid Referer' }, 403);
+        // Allow extensions and same-origin requests
+        const isExtension = origin?.startsWith('chrome-extension://') || origin?.startsWith('moz-extension://') ||
+            referer?.startsWith('chrome-extension://') || referer?.startsWith('moz-extension://');
+
+        if (!isExtension && host) {
+            if (origin && !origin.includes(host)) {
+                return c.json({ error: 'Invalid Origin' }, 403);
+            }
+            if (referer && !referer.includes(host)) {
+                return c.json({ error: 'Invalid Referer' }, 403);
+            }
         }
     }
 

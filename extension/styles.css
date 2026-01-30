@@ -405,3 +405,128 @@ input:read-only {
     background: rgba(30, 41, 59, 0.8);
     backdrop-filter: blur(10px);
 }
+
+/* Folder Tree Select */
+.custom-select-wrapper {
+    position: relative;
+    user-select: none;
+}
+
+.select-trigger {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-input);
+    color: var(--text-main);
+    border-radius: var(--radius);
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.select-trigger::after {
+    content: '';
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 5px solid var(--text-dim);
+}
+
+/* Accordion Style Dropdown */
+.custom-options {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    margin-top: 8px;
+    max-height: 250px;
+    overflow-y: auto;
+    z-index: 50;
+    padding: 4px;
+    box-shadow: var(--shadow-md);
+}
+
+.folder-node {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background-color 0.1s;
+    color: var(--text-main);
+}
+
+.folder-node:hover {
+    background-color: var(--bg-main);
+}
+
+.folder-node.selected {
+    background-color: var(--primary-light);
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.folder-toggle {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 2px;
+    border-radius: 4px;
+    color: var(--text-dim);
+}
+
+.folder-toggle:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.dark .folder-toggle:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.folder-toggle svg {
+    width: 14px;
+    height: 14px;
+    transition: transform 0.2s;
+}
+
+.folder-toggle.collapsed svg {
+    transform: rotate(-90deg);
+}
+
+.folder-toggle.invisible {
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.folder-icon {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    color: var(--primary);
+}
+
+.folder-name {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 13px;
+}
+
+.folder-children {
+    padding-left: 10px;
+    border-left: 1px solid var(--border-color);
+    margin-left: 10px;
+}
+
+.folder-children.hidden {
+    display: none;
+}

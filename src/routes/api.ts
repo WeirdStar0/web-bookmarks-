@@ -35,7 +35,7 @@ app.post('/login', async (c) => {
             await setSignedCookie(c, 'auth', 'true', secret, {
                 httpOnly: true,
                 secure: true,
-                sameSite: 'Strict',
+                sameSite: 'None',
                 maxAge: config.sessionMaxAge
             });
             return c.json({ success: true });
@@ -48,7 +48,7 @@ app.post('/login', async (c) => {
             await setSignedCookie(c, 'auth', 'true', secret, {
                 httpOnly: true,
                 secure: true,
-                sameSite: 'Strict',
+                sameSite: 'None',
                 maxAge: config.sessionMaxAge
             });
             return c.json({ success: true });
