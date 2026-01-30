@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { setSignedCookie, deleteCookie, getSignedCookie } from 'hono/cookie';
 import { Bindings, Variables } from '../types';
-import { getConfig, getSettings, hashPassword, invalidateSettingsCache } from '../utils/common';
+import { getConfig, getSettings, hashPassword, hashPasswordV2, invalidateSettingsCache } from '../utils/common';
 import * as v from '../utils/validators';
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -30,28 +30,41 @@ app.post('/login', async (c) => {
     const secret = c.get('sessionSecret');
 
     if (username === dbUser) {
-        // 1. Check Hash
-        if (inputHash === dbPass) {
-            await setSignedCookie(c, 'auth', 'true', secret, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'None',
-                maxAge: config.sessionMaxAge
-            });
-            return c.json({ success: true });
-        }
+        // 1. Check V2 (PBKDF2) - Format: v2:salt:hash
+        if (dbPass.startsWith('v2:')) {
+            const parts = dbPass.split(':');
+            if (parts.length === 3) {
+                const salt = parts[1];
+                const storedHash = parts[2];
+                const result = await hashPasswordV2(password, salt);
+                if (result.hash === storedHash) {
+                    await setSignedCookie(c, 'auth', 'true', secret, {
+                        httpOnly: true,
+                        secure: true,
+                        sameSite: 'None',
+                        maxAge: config.sessionMaxAge
+                    });
+                    return c.json({ success: true });
+                }
+            }
+        } else {
+            // 2. Check V1 (SHA-256) & Migrate
+            const inputHash = await hashPassword(password);
+            if (inputHash === dbPass) {
+                // Migrate to V2
+                const v2 = await hashPasswordV2(password);
+                const newDbValue = `v2:${v2.salt}:${v2.hash}`;
+                await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(newDbValue, 'password').run();
+                invalidateSettingsCache();
 
-        // 2. Migration: Check Plaintext (Legacy)
-        if (password === dbPass) {
-            await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(inputHash, 'password').run();
-            invalidateSettingsCache();
-            await setSignedCookie(c, 'auth', 'true', secret, {
-                httpOnly: true,
-                secure: true,
-                sameSite: 'None',
-                maxAge: config.sessionMaxAge
-            });
-            return c.json({ success: true });
+                await setSignedCookie(c, 'auth', 'true', secret, {
+                    httpOnly: true,
+                    secure: true,
+                    sameSite: 'None',
+                    maxAge: config.sessionMaxAge
+                });
+                return c.json({ success: true, migrated: true });
+            }
         }
     }
     return c.json({ error: 'Invalid credentials' }, 401);
@@ -80,8 +93,9 @@ app.put('/settings', async (c) => {
         if (!validation.valid) {
             return c.json({ error: validation.error }, 400);
         }
-        const passHash = await hashPassword(password);
-        await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(passHash, 'password').run();
+        const v2 = await hashPasswordV2(password);
+        const newDbValue = `v2:${v2.salt}:${v2.hash}`;
+        await c.env.DB.prepare('UPDATE settings SET value = ? WHERE key = ?').bind(newDbValue, 'password').run();
     }
 
     invalidateSettingsCache();
@@ -95,6 +109,23 @@ app.get('/data', async (c) => {
     const { results: folders } = await c.env.DB.prepare('SELECT * FROM folders WHERE is_deleted = 0 ORDER BY sort_order ASC, name ASC').all();
     const { results: bookmarks } = await c.env.DB.prepare('SELECT * FROM bookmarks WHERE is_deleted = 0 ORDER BY created_at ASC').all();
     return c.json({ folders, bookmarks });
+});
+
+// API: Search Bookmarks (Server-Side)
+app.get('/search', async (c) => {
+    const secret = c.get('sessionSecret');
+    if (!await getSignedCookie(c, secret, 'auth')) return c.json({ error: 'Unauthorized' }, 401);
+
+    const query = c.req.query('q');
+    if (!query || query.trim().length === 0) {
+        return c.json({ bookmarks: [] });
+    }
+
+    const { results: bookmarks } = await c.env.DB.prepare(
+        'SELECT * FROM bookmarks WHERE is_deleted = 0 AND (title LIKE ? OR url LIKE ?) ORDER BY created_at DESC LIMIT 50'
+    ).bind(`%${query}%`, `%${query}%`).all();
+
+    return c.json({ bookmarks });
 });
 
 // API: Create Folder

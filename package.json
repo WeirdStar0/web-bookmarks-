@@ -10,6 +10,7 @@
     "db:migrate": "echo \"⚠️  DANGER: Use 'npm run db:reset' if you really want to RESET (WIPE) the database. For incremental changes, stick to manual execution for now.\"",
     "deploy": "wrangler deploy",
     "lint": "eslint \"src/**/*.ts\"",
+    "build:ext": "node scripts/build_extensions.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

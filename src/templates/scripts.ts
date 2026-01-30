@@ -1,5 +1,8 @@
-export const scripts = `
+export const scripts = (t: any) => `
     <script>
+        // Inject translations from server
+        window.translations = ${JSON.stringify(t)};
+
         function app() {
             return {
                 loggedIn: false,
@@ -51,6 +54,9 @@ export const scripts = `
                 dropTarget: null, // { id, type }
                 isSorting: false,
 
+                // Expose translations to Alpine template
+                t: window.translations,
+
                 init() {
                     if (this.darkMode) document.documentElement.classList.add('dark');
                     this.checkAuth();
@@ -74,7 +80,7 @@ export const scripts = `
                     if (this.isOperationPending) return;
                     this.isOperationPending = true;
                     this.isLoading = true;
-                    this.loadingText = '处理中...';
+                    this.loadingText = window.translations.toast.processing;
                     try {
                         await fn();
                     } finally {
@@ -85,7 +91,7 @@ export const scripts = `
 
                 async login() {
                     this.isLoading = true;
-                    this.loadingText = '登录中...';
+                    this.loadingText = window.translations.toast.loggingIn;
                     try {
                         const res = await fetch('/api/login', {
                             method: 'POST',
@@ -98,10 +104,10 @@ export const scripts = `
                             await this.loadData();
                         } else {
                             const data = await res.json();
-                            this.loginError = data.error || 'Login failed';
+                            this.loginError = data.error || window.translations.toast.loginFailed;
                         }
                     } catch (e) {
-                        this.loginError = 'Network error';
+                        this.loginError = window.translations.toast.networkError;
                     } finally {
                         this.isLoading = false;
                     }
@@ -283,9 +289,9 @@ export const scripts = `
                 },
 
                 getFolderName(id) {
-                    if (!id) return '所有书签 (根目录)';
+                    if (!id) return window.translations.modals.rootFolder;
                     const folder = this.folders.find(f => f.id === id);
-                    return folder ? folder.name : '未知文件夹';
+                    return folder ? folder.name : window.translations.modals.unknownFolder;
                 },
 
                 toggleSelector(id) {
@@ -332,7 +338,7 @@ export const scripts = `
                 },
 
                 deleteFolder(id) {
-                    this.confirmAction('确定要删除这个文件夹吗？', async () => {
+                    this.confirmAction(window.translations.modals.confirmDeleteFolderGeneric, async () => {
                         await this.withLoading(async () => {
                             await fetch(\`/api/folders/\${id}\`, { method: 'DELETE' });
                             this.loadData();
@@ -390,7 +396,7 @@ export const scripts = `
                 },
 
                 deleteBookmark(id) {
-                    this.confirmAction('确定要删除这个书签吗？', async () => {
+                    this.confirmAction(window.translations.modals.confirmDeleteBookmarkGeneric, async () => {
                         await this.withLoading(async () => {
                             await fetch(\`/api/bookmarks/\${id}\`, { method: 'DELETE' });
                             this.loadData();
@@ -415,7 +421,7 @@ export const scripts = `
                 },
 
                 permanentDeleteFolder(id) {
-                    this.confirmAction('确定要永久删除这个文件夹吗？此操作无法撤销！', async () => {
+                    this.confirmAction(window.translations.modals.confirmPermanentDeleteFolder, async () => {
                         await this.withLoading(async () => {
                             await fetch(\`/api/trash/folders/\${id}\`, { method: 'DELETE' });
                             this.loadTrash();
@@ -424,7 +430,7 @@ export const scripts = `
                 },
 
                 permanentDeleteBookmark(id) {
-                    this.confirmAction('确定要永久删除这个书签吗？此操作无法撤销！', async () => {
+                    this.confirmAction(window.translations.modals.confirmPermanentDeleteBookmark, async () => {
                         await this.withLoading(async () => {
                             await fetch(\`/api/trash/bookmarks/\${id}\`, { method: 'DELETE' });
                             this.loadTrash();
@@ -433,7 +439,7 @@ export const scripts = `
                 },
 
                 emptyTrash() {
-                    this.confirmAction('确定要清空回收站吗？所有项目将被永久删除！', async () => {
+                    this.confirmAction(window.translations.modals.confirmEmptyTrashGeneric, async () => {
                         await this.withLoading(async () => {
                             await fetch('/api/trash/empty', { method: 'DELETE' });
                             this.loadTrash();
@@ -459,9 +465,9 @@ export const scripts = `
                         });
                         if (res.ok) {
                             this.showSettingsModal = false;
-                            this.showToast('设置已更新', 'success');
+                            this.showToast(window.translations.toast.settingsUpdated, 'success');
                         } else {
-                            this.showToast('更新失败', 'error');
+                            this.showToast(window.translations.toast.updateFailed, 'error');
                         }
                     });
                 },
@@ -479,313 +485,313 @@ export const scripts = `
                 toggleSorting() {
                     this.isSorting = !this.isSorting;
                 },
-                
-                showToast(message, type = 'success') {
-                    this.toast = { show: true, message, type };
-                    setTimeout(() => {
-                        this.toast.show = false;
-                    }, 3000);
+
+                setLanguage(lang) {
+                    document.cookie = 'locale=' + lang + '; path=/; max-age=31536000';
+                    window.location.reload();
                 },
-                
-                confirmAction(message, callback) {
-                    this.confirmMessage = message;
-                    this.confirmCallback = callback;
-                    this.showConfirmModal = true;
-                },
-                
-                executeConfirm() {
-                    if (this.confirmCallback) {
-                        this.confirmCallback();
-                    }
-                    this.showConfirmModal = false;
-                },
+
+showToast(message, type = 'success') {
+    this.toast = { show: true, message, type };
+    setTimeout(() => {
+        this.toast.show = false;
+    }, 3000);
+},
+
+confirmAction(message, callback) {
+    this.confirmMessage = message;
+    this.confirmCallback = callback;
+    this.showConfirmModal = true;
+},
+
+executeConfirm() {
+    if (this.confirmCallback) {
+        this.confirmCallback();
+    }
+    this.showConfirmModal = false;
+},
                 
                 async importBookmarks(event) {
-                    const file = event.target.files[0];
-                    if (!file) return;
-                    
-                    this.confirmAction('确定要导入书签吗？这可能需要一些时间。', async () => {
-                        this.isLoading = true;
-                        const preventUnload = (e) => {
-                            e.preventDefault();
-                            e.returnValue = '';
-                        };
-                        window.addEventListener('beforeunload', preventUnload);
+    const file = event.target.files[0];
+    if (!file) return;
 
-                        await this.withLoading(async () => {
-                            try {
-                                const text = await file.text();
-                                const res = await fetch('/api/import', {
-                                    method: 'POST',
-                                    body: text
-                                });
+    this.confirmAction(window.translations.modals.importConfirm, async () => {
+        this.isLoading = true;
+        const preventUnload = (e) => {
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        window.addEventListener('beforeunload', preventUnload);
 
-                                if (res.ok) {
-                                    this.showToast('导入成功', 'success');
-                                    this.loadData();
-                                    this.showSettingsModal = false;
-                                } else {
-                                    this.showToast('导入失败', 'error');
-                                }
-                            } catch (e) {
-                                this.showToast('导入出错: ' + e.message, 'error');
-                            } finally {
-                                this.isLoading = false;
-                                window.removeEventListener('beforeunload', preventUnload);
-                                event.target.value = '';
-                            }
-                        });
-                    });
-                },
+        await this.withLoading(async () => {
+            try {
+                const text = await file.text();
+                const res = await fetch('/api/import', {
+                    method: 'POST',
+                    body: text
+                });
 
-                // ========== 拖拽功能 ==========
+                if (res.ok) {
+                    this.showToast(window.translations.toast.importSuccess, 'success');
+                    this.loadData();
+                    this.showSettingsModal = false;
+                } else {
+                    this.showToast(window.translations.toast.importFailed, 'error');
+                }
+            } catch (e) {
+                this.showToast(window.translations.toast.importError + e.message, 'error');
+            } finally {
+                this.isLoading = false;
+                window.removeEventListener('beforeunload', preventUnload);
+                event.target.value = '';
+            }
+        });
+    });
+},
 
-                handleDragStart(event, item, type) {
-                    this.draggedItem = {
-                        id: item.id,
-                        type: type,
-                        data: item
-                    };
-                    // 设置拖拽数据
-                    event.dataTransfer.effectAllowed = 'move';
-                    event.dataTransfer.setData('text/plain', JSON.stringify({ id: item.id, type }));
+// ========== 拖拽功能 ==========
 
-                    // 延迟添加样式,让拖拽幻影显示
-                    setTimeout(() => {
-                        event.target.style.opacity = '0.5';
-                    }, 0);
-                },
+handleDragStart(event, item, type) {
+    this.draggedItem = {
+        id: item.id,
+        type: type,
+        data: item
+    };
+    // 设置拖拽数据
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', JSON.stringify({ id: item.id, type }));
 
-                handleDragEnd(event) {
-                    // 清除拖拽状态
-                    this.draggedItem = null;
-                    this.dropTarget = null;
+    // 延迟添加样式,让拖拽幻影显示
+    setTimeout(() => {
+        event.target.style.opacity = '0.5';
+    }, 0);
+},
 
-                    // 恢复元素样式
-                    if (event.target) {
-                        event.target.style.opacity = '1';
-                    }
-                },
+handleDragEnd(event) {
+    // 清除拖拽状态
+    this.draggedItem = null;
+    this.dropTarget = null;
 
-                handleDragOver(event, type) {
-                    event.preventDefault();
-                    event.dataTransfer.dropEffect = 'move';
-                },
+    // 恢复元素样式
+    if (event.target) {
+        event.target.style.opacity = '1';
+    }
+},
+
+handleDragOver(event, type) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+},
 
                 async handleDrop(event, targetType) {
-                    event.preventDefault();
+    event.preventDefault();
 
-                    if (!this.draggedItem) return;
+    if (!this.draggedItem) return;
 
-                    // 获取放置目标
-                    const className = targetType + '-item';
-                    const targetElement = event.target.closest('.' + className);
-                    if (!targetElement) {
-                        this.draggedItem = null;
-                        return;
-                    }
+    // 获取放置目标
+    const className = targetType + '-item';
+    const targetElement = event.target.closest('.' + className);
+    if (!targetElement) {
+        this.draggedItem = null;
+        return;
+    }
 
-                    // 从当前列表中找到目标项
-                    const currentList = targetType === 'folder' ? this.currentFolders : this.currentBookmarks;
-                    const allElements = Array.from(document.querySelectorAll('.' + className));
-                    const targetIndex = allElements.indexOf(targetElement);
+    // 从当前列表中找到目标项
+    const currentList = targetType === 'folder' ? this.currentFolders : this.currentBookmarks;
+    const allElements = Array.from(document.querySelectorAll('.' + className));
+    const targetIndex = allElements.indexOf(targetElement);
 
-                    if (targetIndex === -1 || !currentList[targetIndex]) {
-                        console.error('无法找到目标项:', { targetIndex, currentList });
-                        this.draggedItem = null;
-                        this.dropTarget = null;
-                        return;
-                    }
+    if (targetIndex === -1 || !currentList[targetIndex]) {
+        console.error('无法找到目标项:', { targetIndex, currentList });
+        this.draggedItem = null;
+        this.dropTarget = null;
+        return;
+    }
 
-                    const targetItem = currentList[targetIndex];
+    const targetItem = currentList[targetIndex];
 
-                    if (!targetItem || this.draggedItem.id === targetItem.id) {
-                        this.draggedItem = null;
-                        this.dropTarget = null;
-                        return;
-                    }
+    if (!targetItem || this.draggedItem.id === targetItem.id) {
+        this.draggedItem = null;
+        this.dropTarget = null;
+        return;
+    }
 
-                    console.log('拖拽操作:', {
-                        draggedItem: this.draggedItem,
-                        targetItem: targetItem,
-                        targetType: targetType
-                    });
+    console.log('拖拽操作:', {
+        draggedItem: this.draggedItem,
+        targetItem: targetItem,
+        targetType: targetType
+    });
 
-                    // 执行拖拽操作
-                    try {
-                        if (this.draggedItem.type === 'folder' && targetType === 'folder') {
-                            await this.reorderFolders(this.draggedItem.id, targetItem.id);
-                        } else if (this.draggedItem.type === 'bookmark' && targetType === 'bookmark') {
-                            await this.reorderBookmarks(this.draggedItem.id, targetItem.id);
-                        } else if (this.draggedItem.type === 'bookmark' && targetType === 'folder') {
-                            // 将书签移动到文件夹
-                            await this.moveBookmarkToFolder(this.draggedItem.id, targetItem.id);
-                        }
-                    } catch (e) {
-                        console.error('拖拽操作失败:', e);
-                        this.showToast('操作失败: ' + e.message, 'error');
-                    }
+    // 执行拖拽操作
+    try {
+        if (this.draggedItem.type === 'folder' && targetType === 'folder') {
+            await this.reorderFolders(this.draggedItem.id, targetItem.id);
+        } else if (this.draggedItem.type === 'bookmark' && targetType === 'bookmark') {
+            await this.reorderBookmarks(this.draggedItem.id, targetItem.id);
+        } else if (this.draggedItem.type === 'bookmark' && targetType === 'folder') {
+            // 将书签移动到文件夹
+            await this.moveBookmarkToFolder(this.draggedItem.id, targetItem.id);
+        }
+    } catch (e) {
+        console.error('拖拽操作失败:', e);
+        this.showToast(window.translations.toast.operationFailed + ': ' + e.message, 'error');
+    }
 
-                    // 清除拖拽状态
-                    this.draggedItem = null;
-                    this.dropTarget = null;
-                },
+    // 清除拖拽状态
+    this.draggedItem = null;
+    this.dropTarget = null;
+},
 
                 // 重新排序文件夹
                 async reorderFolders(draggedId, targetId) {
-                    await this.withLoading(async () => {
-                        try {
-                            console.log('重新排序文件夹:', { draggedId, targetId, currentFolderId: this.currentFolderId });
+    await this.withLoading(async () => {
+        try {
+            console.log('重新排序文件夹:', { draggedId, targetId, currentFolderId: this.currentFolderId });
 
-                            // 获取当前文件夹列表
-                            const currentFolders = this.folders.filter(f => f.parent_id === this.currentFolderId && !f.is_deleted);
-                            console.log('当前文件夹列表:', currentFolders);
+            // 获取当前文件夹列表
+            const currentFolders = this.folders.filter(f => f.parent_id === this.currentFolderId && !f.is_deleted);
+            console.log('当前文件夹列表:', currentFolders);
 
-                            // 找到拖拽项和目标项的索引
-                            const draggedIndex = currentFolders.findIndex(f => f.id === draggedId);
-                            const targetIndex = currentFolders.findIndex(f => f.id === targetId);
+            // 找到拖拽项和目标项的索引
+            const draggedIndex = currentFolders.findIndex(f => f.id === draggedId);
+            const targetIndex = currentFolders.findIndex(f => f.id === targetId);
 
-                            if (draggedIndex === -1 || targetIndex === -1) {
-                                console.error('找不到拖拽项或目标项:', { draggedIndex, targetIndex });
-                                this.showToast('排序失败: 找不到项目', 'error');
-                                return;
-                            }
+            if (draggedIndex === -1 || targetIndex === -1) {
+                console.error('找不到拖拽项或目标项:', { draggedIndex, targetIndex });
+                this.showToast(window.translations.toast.sortFailed + '找不到项目', 'error');
+                return;
+            }
 
-                            // 创建新顺序
-                            const newOrder = [...currentFolders];
-                            newOrder.splice(draggedIndex, 1);
-                            newOrder.splice(targetIndex, 0, currentFolders[draggedIndex]);
+            // 创建新顺序
+            const newOrder = [...currentFolders];
+            newOrder.splice(draggedIndex, 1);
+            newOrder.splice(targetIndex, 0, currentFolders[draggedIndex]);
 
-                            // 提取 ID 数组
-                            const orderedIds = newOrder.map(f => f.id);
-                            console.log('新顺序 ID:', orderedIds);
+            // 提取 ID 数组
+            const orderedIds = newOrder.map(f => f.id);
+            console.log('新顺序 ID:', orderedIds);
 
-                            // 发送到服务器
-                            const res = await fetch('/api/folders/reorder', {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ orderedIds })
-                            });
+            // 发送到服务器
+            const res = await fetch('/api/folders/reorder', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ orderedIds })
+            });
 
-                            const result = await res.json();
-                            console.log('服务器响应:', result);
+            const result = await res.json();
+            console.log('服务器响应:', result);
 
-                            if (res.ok) {
-                                this.showToast('排序已更新', 'success');
-                                await this.loadData();
-                            } else {
-                                console.error('服务器错误:', result);
-                                this.showToast('排序更新失败: ' + (result.error || '未知错误'), 'error');
-                            }
-                        } catch (e) {
-                            console.error('排序异常:', e);
-                            this.showToast('操作失败: ' + e.message, 'error');
-                        }
-                    });
-                },
+            if (res.ok) {
+                this.showToast(window.translations.toast.sortUpdated, 'success');
+                await this.loadData();
+            } else {
+                console.error('服务器错误:', result);
+                this.showToast(window.translations.toast.sortFailed + (result.error || '未知错误'), 'error');
+            }
+        } catch (e) {
+            console.error('排序异常:', e);
+            this.showToast(window.translations.toast.operationFailed + ': ' + e.message, 'error');
+        }
+    });
+},
 
                 // 重新排序书签
                 async reorderBookmarks(draggedId, targetId) {
-                    await this.withLoading(async () => {
-                        try {
-                            console.log('重新排序书签:', { draggedId, targetId, currentFolderId: this.currentFolderId });
+    await this.withLoading(async () => {
+        try {
+            console.log('重新排序书签:', { draggedId, targetId, currentFolderId: this.currentFolderId });
 
-                            // 获取当前文件夹的书签列表
-                            const currentBookmarks = this.bookmarks.filter(b =>
-                                b.folder_id === this.currentFolderId && !b.is_deleted
-                            );
-                            console.log('当前书签列表:', currentBookmarks);
+            // 获取当前文件夹的书签列表
+            const currentBookmarks = this.bookmarks.filter(b =>
+                b.folder_id === this.currentFolderId && !b.is_deleted
+            );
+            console.log('当前书签列表:', currentBookmarks);
 
-                            // 找到拖拽项和目标项的索引
-                            const draggedIndex = currentBookmarks.findIndex(b => b.id === draggedId);
-                            const targetIndex = currentBookmarks.findIndex(b => b.id === targetId);
+            // 找到拖拽项和目标项的索引
+            const draggedIndex = currentBookmarks.findIndex(b => b.id === draggedId);
+            const targetIndex = currentBookmarks.findIndex(b => b.id === targetId);
 
-                            if (draggedIndex === -1 || targetIndex === -1) {
-                                console.error('找不到拖拽项或目标项:', { draggedIndex, targetIndex });
-                                this.showToast('排序失败: 找不到项目', 'error');
-                                return;
-                            }
+            if (draggedIndex === -1 || targetIndex === -1) {
+                console.error('找不到拖拽项或目标项:', { draggedIndex, targetIndex });
+                this.showToast(window.translations.toast.sortFailed + '找不到项目', 'error');
+                return;
+            }
 
-                            // 创建新顺序
-                            const newOrder = [...currentBookmarks];
-                            newOrder.splice(draggedIndex, 1);
-                            newOrder.splice(targetIndex, 0, currentBookmarks[draggedIndex]);
+            // 创建新顺序
+            const newOrder = [...currentBookmarks];
+            newOrder.splice(draggedIndex, 1);
+            newOrder.splice(targetIndex, 0, currentBookmarks[draggedIndex]);
 
-                            // 提取 ID 数组,确保是数字类型
-                            const orderedIds = newOrder.map(b => {
-                                const id = parseInt(b.id);
-                                console.log('书签 ID:', b.id, '类型:', typeof b.id, '解析后:', id, 'isNaN:', isNaN(id));
-                                return id;
-                            });
+            // 提取 ID 数组,确保是数字类型
+            const orderedIds = newOrder.map(b => {
+                const id = parseInt(b.id);
+                return id;
+            });
 
-                            // 验证所有 ID 都是有效数字
-                            const invalidId = orderedIds.find(id => isNaN(id) || id <= 0);
-                            if (invalidId !== undefined) {
-                                console.error('发现无效 ID:', invalidId);
-                                this.showToast('排序失败: 包含无效的 ID', 'error');
-                                return;
-                            }
+            // 验证所有 ID 都是有效数字
+            const invalidId = orderedIds.find(id => isNaN(id) || id <= 0);
+            if (invalidId !== undefined) {
+                console.error('发现无效 ID:', invalidId);
+                this.showToast(window.translations.toast.sortFailed + '包含无效的 ID', 'error');
+                return;
+            }
 
-                            console.log('新顺序 ID (数字):', orderedIds, '类型:', typeof orderedIds[0]);
-                            console.log('ID 数组长度:', orderedIds.length);
+            const requestBody = JSON.stringify({ orderedIds });
 
-                            const requestBody = JSON.stringify({ orderedIds });
-                            console.log('请求体:', requestBody);
+            // 发送到服务器
+            const res = await fetch('/api/bookmarks/reorder', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: requestBody
+            });
 
-                            // 发送到服务器
-                            const res = await fetch('/api/bookmarks/reorder', {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: requestBody
-                            });
+            const result = await res.json();
+            console.log('服务器响应:', result);
 
-                            const result = await res.json();
-                            console.log('服务器响应:', result);
-
-                            if (res.ok) {
-                                this.showToast('排序已更新', 'success');
-                                await this.loadData();
-                            } else {
-                                console.error('服务器错误:', result);
-                                this.showToast('排序更新失败: ' + (result.error || '未知错误'), 'error');
-                            }
-                        } catch (e) {
-                            console.error('排序异常:', e);
-                            this.showToast('操作失败: ' + e.message, 'error');
-                        }
-                    });
-                },
+            if (res.ok) {
+                this.showToast(window.translations.toast.sortUpdated, 'success');
+                await this.loadData();
+            } else {
+                console.error('服务器错误:', result);
+                this.showToast(window.translations.toast.sortFailed + (result.error || '未知错误'), 'error');
+            }
+        } catch (e) {
+            console.error('排序异常:', e);
+            this.showToast(window.translations.toast.operationFailed + ': ' + e.message, 'error');
+        }
+    });
+},
 
                 // 移动书签到文件夹
                 async moveBookmarkToFolder(bookmarkId, folderId) {
-                    await this.withLoading(async () => {
-                        try {
-                            const bookmark = this.bookmarks.find(b => b.id === bookmarkId);
-                            if (!bookmark) return;
+    await this.withLoading(async () => {
+        try {
+            const bookmark = this.bookmarks.find(b => b.id === bookmarkId);
+            if (!bookmark) return;
 
-                            const url = '/api/bookmarks/' + bookmarkId;
-                            const res = await fetch(url, {
-                                method: 'PUT',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    title: bookmark.title,
-                                    url: bookmark.url,
-                                    folder_id: folderId
-                                })
-                            });
+            const url = '/api/bookmarks/' + bookmarkId;
+            const res = await fetch(url, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    title: bookmark.title,
+                    url: bookmark.url,
+                    folder_id: folderId
+                })
+            });
 
-                            if (res.ok) {
-                                this.showToast('已移动到文件夹', 'success');
-                                await this.loadData();
-                            } else {
-                                this.showToast('移动失败', 'error');
-                            }
-                        } catch (e) {
-                            this.showToast('操作失败: ' + e.message, 'error');
-                        }
-                    });
-                },
+            if (res.ok) {
+                this.showToast(window.translations.toast.movedToFolder, 'success');
+                await this.loadData();
+            } else {
+                this.showToast(window.translations.toast.moveFailed, 'error');
+            }
+        } catch (e) {
+            this.showToast(window.translations.toast.operationFailed + ': ' + e.message, 'error');
+        }
+    });
+},
             }
         }
-    </script>
-`;
+</script>
+    `;

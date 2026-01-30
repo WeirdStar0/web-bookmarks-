@@ -1,12 +1,52 @@
 import { Bindings } from '../types';
 import { D1Database } from '@cloudflare/workers-types';
 
+
+// V1: SHA-256 (Legacy)
 export async function hashPassword(password: string): Promise<string> {
     const encoder = new TextEncoder();
     const data = encoder.encode(password);
     const hashBuffer = await crypto.subtle.digest('SHA-256', data);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// V2: PBKDF2 (Secure)
+export async function hashPasswordV2(password: string, saltHex?: string): Promise<{ hash: string; salt: string }> {
+    const encoder = new TextEncoder();
+    const salt = saltHex ? hexToBuf(saltHex) : crypto.getRandomValues(new Uint8Array(16));
+    const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        { name: 'PBKDF2' },
+        false,
+        ['deriveBits']
+    );
+
+    const hashBuffer = await crypto.subtle.deriveBits(
+        {
+            name: 'PBKDF2',
+            salt: salt,
+            iterations: 100000,
+            hash: 'SHA-256'
+        },
+        keyMaterial,
+        256
+    );
+
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const saltHexOut = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    return { hash: hashHex, salt: saltHexOut };
+}
+
+function hexToBuf(hex: string): Uint8Array {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substring(i, i + 2), 16);
+    }
+    return bytes;
 }
 
 export function getConfig(env: Bindings) {
@@ -17,27 +57,16 @@ export function getConfig(env: Bindings) {
     };
 }
 
-let cachedSettings: Record<string, string> | null = null;
-let lastCacheUpdate = 0;
-const CACHE_TTL = 30000; // 30s
 
 export async function getSettings(db: D1Database): Promise<Record<string, string>> {
-    const now = Date.now();
-    if (cachedSettings && (now - lastCacheUpdate < CACHE_TTL)) {
-        return cachedSettings;
-    }
-
     const { results } = await db.prepare('SELECT key, value FROM settings').all();
     const settings: Record<string, string> = {};
     results.forEach((row: any) => {
         settings[row.key] = row.value;
     });
-
-    cachedSettings = settings;
-    lastCacheUpdate = now;
     return settings;
 }
 
 export function invalidateSettingsCache() {
-    cachedSettings = null;
+    // No-op as cache is removed
 }
